@@ -1,0 +1,543 @@
+<!DOCTYPE>
+<html>
+
+<head>
+  <script src="purify.min.js"></script>
+  <style>
+    @font-face {
+      font-family: Inter;
+      src: url(./inter_variable.ttf);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-family: 'Inter';
+      height: 100dvh;
+      margin: 0;
+    }
+
+    body {
+      margin: 0;
+      height: 100dvh;
+      display: grid;
+      justify-content: center;
+      align-items: center;
+    }
+
+    h1 {
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 400;
+    }
+
+    #menu {
+      text-align: center;
+    }
+
+    #viewer h1 {
+      font-size: 32px;
+      margin-top: 24px;
+      margin-bottom: 10px;
+    }
+
+    #viewer {
+      height: 100%;
+      width: 100dvw;
+      max-width: 638px;
+      display: flex;
+      flex-direction: column;
+      justify-content: start;
+      line-height: 1;
+    }
+
+    .line {
+      display: flex;
+      align-items: center;
+    }
+
+    .column {
+      flex-shrink: 0;
+      width: 24px;
+      height: 100%;
+      border-left: 1px solid #BFBFBF;
+      display: inline-block;
+      position: relative;
+      left: 1px;
+    }
+
+    #viewer div {
+      height: 28px;
+    }
+
+    .string_key {
+      color: #4E9590;
+      padding-right: 4px;
+      font-weight: 400;
+    }
+
+    .number_key {
+      color: #BFBFBF;
+      padding-right: 4px;
+      font-weight: 400;
+    }
+
+    .bracket {
+      color: #F2CAB8;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <script>
+    const $ = (query, el = document) => el.querySelector(query);
+    const $$ = (query, el = document) => el.querySelectorAll(query);
+  </script>
+  <section id="menu">
+    <h1>JSON Tree Viewer</h1>
+    <h2>Simple JSON Viewer that runs completely on-client. No data exchange</h2>
+    <input type="file" id="fileInput" accept="application/JSON" style="display:none" />
+    <button id="fileSelect" type="button">Load JSON</button>
+    <p style="color: #BF0E0E;display: none">Invalid file. Please load a valid JSON file.</p>
+  </section>
+  <section id="viewer" style="display: none">
+    <h1 id="filename"></h1>
+    <div id="canvas"></div>
+  </section>
+  <script>
+    const menu = $('#menu');
+
+    const fileSelect = $('#fileSelect');
+    const fileInput = $('#fileInput');
+
+    const viewer = $('#viewer');
+    const canvas = $('#canvas');
+
+    let fullBuffer;
+
+    const switchTo = (section) => {
+      console.log(menu, viewer);
+      if (section === 'menu') {
+        menu.style.display = 'block';
+        viewer.style.display = 'none';
+      } else {
+        viewer.style.display = 'block';
+        menu.style.display = 'none';
+      }
+    }
+
+    fileSelect.onclick = (e) => {
+      fileInput.click();
+    }
+
+    fileInput.onchange = (e) => {
+      console.log('changed', fileInput.files[0]);
+      let file = fileInput.files[0];
+      $('#filename').innerText = file.name;
+      canvas.innerHTML = '';
+
+      let page = 0;
+      let reader = new FileReader();
+      let CHUNK_SIZE = 1 * 1024;
+      let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
+      fullBuffer = new Uint8Array(filePageLength * CHUNK_SIZE);
+      switchTo('viewer');
+
+      reader.onload = () => {
+        let buffer = new Uint8Array(reader.result);
+        fullBuffer.set(buffer, (page - 1) * CHUNK_SIZE);
+        let snippet = new TextDecoder('utf-8').decode(buffer);
+
+        const tokens = lexer(snippet)
+        console.log('tokens', tokens)
+        const json = parser(tokens)
+        console.log(json);
+
+        canvas.innerHTML = DOMPurify.sanitize(walkJsonAst(json));
+      }
+
+      function seek(start = 0, end = CHUNK_SIZE) {
+        let slice = file.slice(start, end);
+        reader.readAsArrayBuffer(slice);
+        page++;
+      }
+
+      seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+
+      const handleInfiniteScroll = () => {
+        const endOfPage = Math.ceil(window.innerHeight + window.scrollY) >= -1 + document.body.scrollHeight;
+
+        console.log(endOfPage, Math.ceil(window.innerHeight + window.scrollY), -1 + document.body.scrollHeight);
+        console.log('page', page, filePageLength, page / filePageLength);
+        if (endOfPage && page < filePageLength) {
+          seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+        }
+      };
+      window.addEventListener("scroll", handleInfiniteScroll);
+    }
+
+    const walkJsonAst = (node, pad = -1, html = '') => {
+      // console.log('IN', node, html);
+      switch (node.type) {
+        case NODE_TYPES.PROGRAM:
+          let root = node.body[0];
+          if (root.type === NODE_TYPES.ARRAY) {
+            pad++;
+          }
+          return walkJsonAst(root, pad, html);
+        case NODE_TYPES.OBJECT:
+          pad++;
+          html += `</div>`;
+          node.properties.forEach((child) => {
+            html += walkJsonAst(child, pad, '');
+          })
+          pad--;
+          break;
+        case NODE_TYPES.ARRAY:
+          pad++;
+          html += '<span><span class="bracket">[</span></span>';
+          html += `</div>`;
+          node.elements.forEach((child, i) => {
+            html += `<div class="line">${padLeft(pad)}<span class="number_key">${i}: </span>`;
+            html += walkJsonAst(child, pad, '');
+            html += `</div>`;
+          })
+          // html += `<div>`;
+          pad--;
+          html += `<div class="line">${padLeft(pad)}<span class="bracket">]</span></div>`;
+          break;
+        case NODE_TYPES.PROPERTY:
+          html += `<div class="line">${padLeft(pad)}<span class="string_key">${node.key.value}: </span>`;
+          html += walkJsonAst(node.value, pad, '');
+          html += '</div>'
+          break;
+        case NODE_TYPES.STRING:
+          html += `<span class="string">"${node.value}"</span>`;
+          break;
+        case NODE_TYPES.NUMBER:
+          html += `<span class="number">${node.value}</span>`;
+          break;
+        case NODE_TYPES.BOOLEAN:
+          html += `<span class="boolean">${node.value}</span>`;
+          break;
+        case NODE_TYPES.NULL:
+          html += `<span class="null">null</span>`;
+          break;
+      }
+      // console.log('OUT', node, html);
+      return html;
+    }
+
+    function padLeft(pad) {
+      if (pad < 0) return '';
+      return new Array(pad).fill('<span class="column"></span>').join('');
+    }
+
+    // JSON tokenizer + parser
+    // inspired by: https://dev.to/vit0rr/building-a-json-parser-from-scratch-with-js-3180
+    // Adapted for rinha-frontend
+    // Fixed tokenizer not recognizing floats
+    // Fixed tokenizer not negative numbers 
+    // Fixed tokenizer not recognizing escaping strings 
+    const TOKEN_TYPES = {
+      LEFT_BRACE: 'LEFT_BRACE',
+      RIGHT_BRACE: 'RIGHT_BRACE',
+      LEFT_BRACKET: 'LEFT_BRACKET',
+      RIGHT_BRACKET: 'RIGHT_BRACKET',
+      COLON: 'COLON',
+      COMMA: 'COMMA',
+      STRING: 'STRING',
+      NUMBER: 'NUMBER',
+      TRUE: 'TRUE',
+      FALSE: 'FALSE',
+      NULL: 'NULL',
+    }
+
+    const NODE_TYPES = {
+      PROGRAM: 'Program',
+      OBJECT: 'ObjectExpression',
+      ARRAY: 'ArrayExpression',
+      PROPERTY: 'Property',
+      STRING: 'StringLiteral',
+      NUMBER: 'NumberLiteral',
+      BOOLEAN: 'BooleanLiteral',
+      NULL: 'NullLiteral',
+    }
+
+    const createToken = (type, value) => {
+      return {
+        type,
+        value,
+      }
+    }
+
+    const lexer = (input) => {
+      let current = 0
+      const tokens = []
+
+      while (current < input.length) {
+        let char = input[current]
+
+        if (char === '{') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACE))
+          current++
+          continue
+        }
+
+        if (char === '}') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACE))
+          current++
+          continue
+        }
+
+        if (char === '[') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACKET))
+          current++
+          continue
+        }
+
+        if (char === ']') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACKET))
+          current++
+          continue
+        }
+
+        if (char === ':') {
+          tokens.push(createToken(TOKEN_TYPES.COLON))
+          current++
+          continue
+        }
+
+        if (char === ',') {
+          tokens.push(createToken(TOKEN_TYPES.COMMA))
+          current++
+          continue
+        }
+
+        const WHITESPACE = /\s/
+
+        if (WHITESPACE.test(char)) {
+          current++
+          continue
+        }
+
+        const NUMBERS = /[0-9]/
+        const SEPARATOR = /\./
+        const FLOAT = /[0-9\.\-]/
+        if (FLOAT.test(char)) {
+          let value = ''
+          let hasSeparator = false;
+          while (FLOAT.test(char)) {
+            if (SEPARATOR.test(char)) {
+              if (!hasSeparator) {
+                hasSeparator = true;
+              } else {
+                throw new TypeError('Float number with more than one "."')
+              }
+            }
+            value += char
+
+            char = input[++current]
+          }
+          tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
+          continue
+        }
+
+        if (char === '"') {
+          let value = ''
+          char = input[++current]
+          try {
+
+            while (char !== '"') {
+              if (char === '\\') {
+                value += char
+                char = input[++current]
+                value += char
+                char = input[++current]
+              } else {
+                value += char
+                char = input[++current]
+              }
+            }
+            char = input[++current]
+            tokens.push(createToken(TOKEN_TYPES.STRING, value))
+          } catch (e) {
+            // console.log(tokens);
+            console.log(tokens.slice(-10));
+            // console.log(value, char, current);
+          }
+          continue
+        }
+
+        if (
+          char === 't' &&
+          input[current + 1] === 'r' &&
+          input[current + 2] === 'u' &&
+          input[current + 3] === 'e'
+        ) {
+          tokens.push(createToken(TOKEN_TYPES.TRUE))
+          current += 4
+          continue
+        }
+
+        if (
+          char === 'f' &&
+          input[current + 1] === 'a' &&
+          input[current + 2] === 'l' &&
+          input[current + 3] === 's' &&
+          input[current + 4] === 'e'
+        ) {
+          tokens.push(createToken(TOKEN_TYPES.FALSE))
+          current += 5
+          continue
+        }
+
+        if (
+          char === 'n' &&
+          input[current + 1] === 'u' &&
+          input[current + 2] === 'l' &&
+          input[current + 3] === 'l'
+        ) {
+          tokens.push(createToken(TOKEN_TYPES.NULL))
+          current += 4
+          continue
+        }
+
+        console.log(tokens);
+        throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
+      }
+
+      return tokens
+    }
+
+    const parser = (tokens) => {
+      let current = 0
+
+      const walk = () => {
+        let token = tokens[current]
+
+        if (token.type === TOKEN_TYPES.LEFT_BRACE) {
+          token = tokens[++current]
+
+          const node = {
+            type: NODE_TYPES.OBJECT,
+            properties: [],
+          }
+
+          while (token.type !== TOKEN_TYPES.RIGHT_BRACE) {
+            const property = {
+              type: NODE_TYPES.PROPERTY,
+              key: token,
+              value: null,
+            }
+
+            token = tokens[++current]
+
+            token = tokens[++current]
+            property.value = walk()
+            node.properties.push(property)
+
+            token = tokens[current]
+            if (token.type === TOKEN_TYPES.COMMA) {
+              token = tokens[++current]
+            }
+          }
+
+          current++
+          return node
+        }
+
+        if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
+          current++
+          return {
+            type: NODE_TYPES.OBJECT,
+            properties: [],
+          }
+        }
+
+        if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
+          token = tokens[++current]
+
+          const node = {
+            type: NODE_TYPES.ARRAY,
+            elements: [],
+          }
+
+          while (token.type !== TOKEN_TYPES.RIGHT_BRACKET) {
+            node.elements.push(walk())
+            token = tokens[current]
+
+            if (token.type === TOKEN_TYPES.COMMA) {
+              token = tokens[++current]
+            }
+          }
+
+          current++
+          return node
+        }
+
+        if (token.type === TOKEN_TYPES.STRING) {
+          current++
+          return {
+            type: NODE_TYPES.STRING,
+            value: token.value,
+          }
+        }
+
+        if (token.type === TOKEN_TYPES.NUMBER) {
+          current++
+          return {
+            type: NODE_TYPES.NUMBER,
+            value: token.value,
+          }
+        }
+
+        if (token.type === TOKEN_TYPES.TRUE) {
+          current++
+          return {
+            type: NODE_TYPES.BOOLEAN,
+            value: true,
+          }
+        }
+
+        if (token.type === TOKEN_TYPES.FALSE) {
+          current++
+          return {
+            type: NODE_TYPES.BOOLEAN,
+            value: false,
+          }
+        }
+
+        if (token.type === TOKEN_TYPES.NULL) {
+          current++
+          return {
+            type: NODE_TYPES.NULL,
+            value: null,
+          }
+        }
+
+        throw new TypeError(token.type)
+      }
+
+      const ast = {
+        type: NODE_TYPES.PROGRAM,
+        body: [],
+      }
+
+      while (current < tokens.length) {
+        ast.body.push(walk())
+      }
+
+      return ast
+    }
+  </script>
+</body>
+
+</html>
