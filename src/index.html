@@ -123,7 +123,7 @@
     let fullBuffer;
 
     const switchTo = (section) => {
-      console.log(menu, viewer);
+      // console.log(menu, viewer);
       if (section === 'menu') {
         menu.style.display = 'block';
         viewer.style.display = 'none';
@@ -138,15 +138,20 @@
     }
 
     fileInput.onchange = (e) => {
-      console.log('changed', fileInput.files[0]);
+      // console.log('changed', fileInput.files[0]);
       let file = fileInput.files[0];
       $('#filename').innerText = file.name;
       canvas.innerHTML = '';
 
       let page = 0;
       let reader = new FileReader();
-      let CHUNK_SIZE = 1 * 1024;
+      let CHUNK_SIZE = 10 * 1024;
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
+
+      let tokens = []; 
+      let value = ''; 
+      let state = LEXER_STATES.NORMAL;
+
       fullBuffer = new Uint8Array(filePageLength * CHUNK_SIZE);
       switchTo('viewer');
 
@@ -155,12 +160,11 @@
         fullBuffer.set(buffer, (page - 1) * CHUNK_SIZE);
         let snippet = new TextDecoder('utf-8').decode(buffer);
 
-        const tokens = lexer(snippet)
-        console.log('tokens', tokens)
-        const json = parser(tokens)
-        console.log(json);
+        [value, state] = streamLexer(snippet, tokens, value, state);
+        // const json = parser(tokens)
 
-        canvas.innerHTML = DOMPurify.sanitize(walkJsonAst(json));
+        // canvas.innerHTML = DOMPurify.sanitize(walkJsonAst(json));
+        canvas.innerHTML = JSON.stringify(tokens, null, 4);
       }
 
       function seek(start = 0, end = CHUNK_SIZE) {
@@ -174,8 +178,8 @@
       const handleInfiniteScroll = () => {
         const endOfPage = Math.ceil(window.innerHeight + window.scrollY) >= -1 + document.body.scrollHeight;
 
-        console.log(endOfPage, Math.ceil(window.innerHeight + window.scrollY), -1 + document.body.scrollHeight);
-        console.log('page', page, filePageLength, page / filePageLength);
+        // console.log(endOfPage, Math.ceil(window.innerHeight + window.scrollY), -1 + document.body.scrollHeight);
+        // console.log('page', page, filePageLength, page / filePageLength);
         if (endOfPage && page < filePageLength) {
           seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
         }
@@ -278,143 +282,181 @@
       }
     }
 
-    const lexer = (input) => {
-      let current = 0
-      const tokens = []
-
+    const streamLexer = (input, tokens = [], value = '', state = LEXER_STATES.NORMAL) => {
+      let current = 0;
       while (current < input.length) {
         let char = input[current]
-
-        if (char === '{') {
-          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACE))
-          current++
+        let parsed;
+        let oldState = state;
+        [parsed, char, state, value, current] = parseChar(input, char, tokens, state, value, current);
+        if (parsed) {
+          current++;
           continue
         }
 
-        if (char === '}') {
-          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACE))
-          current++
-          continue
-        }
-
-        if (char === '[') {
-          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACKET))
-          current++
-          continue
-        }
-
-        if (char === ']') {
-          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACKET))
-          current++
-          continue
-        }
-
-        if (char === ':') {
-          tokens.push(createToken(TOKEN_TYPES.COLON))
-          current++
-          continue
-        }
-
-        if (char === ',') {
-          tokens.push(createToken(TOKEN_TYPES.COMMA))
-          current++
-          continue
-        }
-
-        const WHITESPACE = /\s/
-
-        if (WHITESPACE.test(char)) {
-          current++
-          continue
-        }
-
-        const NUMBERS = /[0-9]/
-        const SEPARATOR = /\./
-        const FLOAT = /[0-9\.\-]/
-        if (FLOAT.test(char)) {
-          let value = ''
-          let hasSeparator = false;
-          while (FLOAT.test(char)) {
-            if (SEPARATOR.test(char)) {
-              if (!hasSeparator) {
-                hasSeparator = true;
-              } else {
-                throw new TypeError('Float number with more than one "."')
-              }
-            }
-            value += char
-
-            char = input[++current]
-          }
-          tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
-          continue
-        }
-
-        if (char === '"') {
-          let value = ''
-          char = input[++current]
-          try {
-
-            while (char !== '"') {
-              if (char === '\\') {
-                value += char
-                char = input[++current]
-                value += char
-                char = input[++current]
-              } else {
-                value += char
-                char = input[++current]
-              }
-            }
-            char = input[++current]
-            tokens.push(createToken(TOKEN_TYPES.STRING, value))
-          } catch (e) {
-            // console.log(tokens);
-            console.log(tokens.slice(-10));
-            // console.log(value, char, current);
-          }
-          continue
-        }
-
-        if (
-          char === 't' &&
-          input[current + 1] === 'r' &&
-          input[current + 2] === 'u' &&
-          input[current + 3] === 'e'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.TRUE))
-          current += 4
-          continue
-        }
-
-        if (
-          char === 'f' &&
-          input[current + 1] === 'a' &&
-          input[current + 2] === 'l' &&
-          input[current + 3] === 's' &&
-          input[current + 4] === 'e'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.FALSE))
-          current += 5
-          continue
-        }
-
-        if (
-          char === 'n' &&
-          input[current + 1] === 'u' &&
-          input[current + 2] === 'l' &&
-          input[current + 3] === 'l'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.NULL))
-          current += 4
-          continue
-        }
-
-        console.log(tokens);
+        console.error(char, state, value, current, tokens);
         throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
       }
 
-      return tokens
+      return [value, state];
+    }
+
+    const WHITESPACE = /\s/
+    const SEPARATOR = /\./
+    const NUMBER = /[0-9\.\-]/
+
+    const LEXER_STATES = {
+      NORMAL: 'NORMAL',
+      NUMBER: 'NUMBER',
+      STRING: 'STRING',
+      TRUE_T: 'TRUE_T',
+      TRUE_R: 'TRUE_R',
+      TRUE_U: 'TRUE_U',
+      TRUE_E: 'TRUE_E',
+      FALSE_F: 'FALSE_F',
+      FALSE_A: 'FALSE_A',
+      FALSE_L: 'FALSE_L',
+      FALSE_S: 'FALSE_S',
+      FALSE_E: 'FALSE_E',
+      NULL_N: 'NULL_N',
+      NULL_U: 'NULL_U',
+      NULL_L1: 'NULL_L1',
+      NULL_L2: 'NULL_L2',
+    }
+
+    const parseChar = (input, char, tokens, state, value, current) => {
+      let parsed = true;
+      if (state === LEXER_STATES.NUMBER) {
+        if (NUMBER.test(char)) {
+          value += char
+        } else {
+          tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
+          value = ''
+          state = LEXER_STATES.NORMAL;
+        }
+      } else if (state === LEXER_STATES.STRING) {
+        if (char !== '"') {
+          if (char === '\\') {
+            value += char
+            char = input[++current]
+            value += char
+          } else {
+            value += char
+          }
+        } else {
+          tokens.push(createToken(TOKEN_TYPES.STRING, value))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        }
+      } else if (state === LEXER_STATES.TRUE_T) {
+        if (char === 'r') {
+          value += char;
+          state = LEXER_STATES.TRUE_R
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.TRUE_R) {
+        if (char === 'u') {
+          value += char;
+          state = LEXER_STATES.TRUE_U
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.TRUE_U) {
+        if (char === 'e') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.TRUE))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_F) {
+        if (char === 'a') {
+          value += char;
+          state = LEXER_STATES.FALSE_A
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_A) {
+        if (char === 'l') {
+          value += char;
+          state = LEXER_STATES.FALSE_L
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_L) {
+        if (char === 's') {
+          value += char;
+          state = LEXER_STATES.FALSE_S
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_S) {
+        if (char === 'e') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.FALSE))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_N) {
+        if (char === 'u') {
+          value += char;
+          state = LEXER_STATES.NULL_U
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_U) {
+        if (char === 'l') {
+          value += char;
+          state = LEXER_STATES.NULL_L1
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_L1) {
+        if (char === 'l') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.NULL))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NORMAL) {
+        if (char === '{') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACE))
+        } else if (char === '}') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACE))
+        } else if (char === '[') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACKET))
+        } else if (char === ']') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACKET))
+        } else if (char === ':') {
+          tokens.push(createToken(TOKEN_TYPES.COLON))
+        } else if (char === ',') {
+          tokens.push(createToken(TOKEN_TYPES.COMMA))
+        } else if (WHITESPACE.test(char)) {
+        } else if (NUMBER.test(char)) {
+          state = LEXER_STATES.NUMBER
+        } else if (char === '"') {
+          state = LEXER_STATES.STRING
+        } else if (char === 't') {
+          state = LEXER_STATES.TRUE_T
+          value += char;
+        } else if (char === 'f') {
+          state = LEXER_STATES.FALSE_F
+          value += char;
+        } else if (char === 'n') {
+          state = LEXER_STATES.NULL_N
+          value += char;
+        } else {
+          parsed = false;
+        }
+      }
+
+      return [parsed, char, state, value, current];
     }
 
     const parser = (tokens) => {
@@ -536,6 +578,40 @@
       }
 
       return ast
+    }
+
+
+    // DEEP MERGING MIGHT BE USEFUL LATER ON
+    /**
+     * Simple object check.
+     * @param item
+     * @returns {boolean}
+     */
+    function isObject(item) {
+      return (item && typeof item === 'object' && !Array.isArray(item));
+    }
+
+    /**
+     * Deep merge two objects.
+     * @param target
+     * @param ...sources
+     */
+    function mergeDeep(target, ...sources) {
+      if (!sources.length) return target;
+      const source = sources.shift();
+
+      if (isObject(target) && isObject(source)) {
+        for (const key in source) {
+          if (isObject(source[key])) {
+            if (!target[key]) Object.assign(target, {[key]: {}});
+            mergeDeep(target[key], source[key]);
+          } else {
+            Object.assign(target, {[key]: source[key]});
+          }
+        }
+      }
+
+      return mergeDeep(target, ...sources);
     }
   </script>
 </body>
