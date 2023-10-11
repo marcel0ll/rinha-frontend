@@ -145,7 +145,7 @@
 
       let page = 0;
       let reader = new FileReader();
-      let CHUNK_SIZE = 1 * 1024;
+      let CHUNK_SIZE = 26 * 1024 * 1024;
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
       fullBuffer = new Uint8Array(filePageLength * CHUNK_SIZE);
       switchTo('viewer');
