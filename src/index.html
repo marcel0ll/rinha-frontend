@@ -57,9 +57,20 @@
       line-height: 1;
     }
 
+    #canvas {
+      list-style-type: none;
+      counter-reset: css-counter 0;
+    }
+
     .line {
+      counter-increment: css-counter 1;
       display: flex;
       align-items: center;
+    }
+
+    .line:before {
+      width: 2rem;
+      content: counter(css-counter) ". ";
     }
 
     .column {
@@ -72,7 +83,7 @@
       left: 1px;
     }
 
-    #viewer div {
+    .line {
       height: 28px;
     }
 
@@ -96,10 +107,6 @@
 </head>
 
 <body>
-  <script>
-    const $ = (query, el = document) => el.querySelector(query);
-    const $$ = (query, el = document) => el.querySelectorAll(query);
-  </script>
   <section id="menu">
     <h1>JSON Tree Viewer</h1>
     <h2>Simple JSON Viewer that runs completely on-client. No data exchange</h2>
@@ -112,123 +119,119 @@
     <div id="canvas"></div>
   </section>
   <script>
-    const menu = $('#menu');
+    const menu = document.querySelector('#menu');
 
-    const fileSelect = $('#fileSelect');
-    const fileInput = $('#fileInput');
+    const fileName = document.querySelector('#filename');
+    const fileSelect = document.querySelector('#fileSelect');
+    const fileInput = document.querySelector('#fileInput');
 
-    const viewer = $('#viewer');
-    const canvas = $('#canvas');
-
-    let fullBuffer;
-
-    const switchTo = (section) => {
-      console.log(menu, viewer);
-      if (section === 'menu') {
-        menu.style.display = 'block';
-        viewer.style.display = 'none';
-      } else {
-        viewer.style.display = 'block';
-        menu.style.display = 'none';
-      }
-    }
+    const viewer = document.querySelector('#viewer');
+    const canvas = document.querySelector('#canvas');
 
     fileSelect.onclick = (e) => {
       fileInput.click();
     }
 
-    fileInput.onchange = (e) => {
-      console.log('changed', fileInput.files[0]);
+    fileInput.onchange = async (e) => {
+      // console.log('changed', fileInput.files[0]);
       let file = fileInput.files[0];
-      $('#filename').innerText = file.name;
+      fileName.innerText = file.name;
       canvas.innerHTML = '';
 
       let page = 0;
       let reader = new FileReader();
-      let CHUNK_SIZE = 26 * 1024 * 1024;
+      // 0.5mb chunk
+      let CHUNK_SIZE = Math.ceil(512 * 1024);
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
-      fullBuffer = new Uint8Array(filePageLength * CHUNK_SIZE);
-      switchTo('viewer');
 
-      reader.onload = () => {
-        let buffer = new Uint8Array(reader.result);
-        fullBuffer.set(buffer, (page - 1) * CHUNK_SIZE);
-        let snippet = new TextDecoder('utf-8').decode(buffer);
+      let tokens = [];
+      let allDomPages = [];
+      let value = '';
+      let state = LEXER_STATES.NORMAL;
 
-        const tokens = lexer(snippet)
-        console.log('tokens', tokens)
-        const json = parser(tokens)
-        console.log(json);
 
-        canvas.innerHTML = DOMPurify.sanitize(walkJsonAst(json));
-      }
+      let currentToken = 0;
+      let json = null;
+      let parserState = PARSER_STATES.NORMAL;
+      let pointers = [];
+      pointers.push({obj: null, key: null, state: PARSER_STATES.NULL, isKey: false});
 
-      function seek(start = 0, end = CHUNK_SIZE) {
-        let slice = file.slice(start, end);
-        reader.readAsArrayBuffer(slice);
+      viewer.style.display = 'block';
+      menu.style.display = 'none';
+
+      async function seek(start = 0, end = CHUNK_SIZE) {
+        let blob = file.slice(start, end);
+        let buffer = await blob.arrayBuffer();
+        let data = new Uint8Array(buffer);
+        let snippet = new TextDecoder('utf-8').decode(data);
+
+        [value, state] = lexer(snippet, tokens, value, state);
+        [currentToken, pointers] = parser(currentToken, tokens, pointers);
         page++;
+        if (page >= filePageLength) {
+          const json = pointers[0].obj;
+          let startingPad = -1;
+          if (Array.isArray(json)) {
+            startingPad = 0;
+          }
+          const DomPage = DOMPurify.sanitize(walkJsonObj(json, startingPad));
+          // allDomPages.push(DomPage);
+          canvas.innerHTML = DomPage;
+        }
       }
 
-      seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+      await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
 
-      const handleInfiniteScroll = () => {
-        const endOfPage = Math.ceil(window.innerHeight + window.scrollY) >= -1 + document.body.scrollHeight;
-
-        console.log(endOfPage, Math.ceil(window.innerHeight + window.scrollY), -1 + document.body.scrollHeight);
+      async function doWork() {
         console.log('page', page, filePageLength, page / filePageLength);
-        if (endOfPage && page < filePageLength) {
-          seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+        if (page < filePageLength) {
+          await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+          await yieldToMain();
+          doWork();
         }
-      };
-      window.addEventListener("scroll", handleInfiniteScroll);
+      }
+
+      await doWork();
     }
 
-    const walkJsonAst = (node, pad = -1, html = '') => {
+    const walkJsonObj = (node, pad = 0, html = '') => {
       // console.log('IN', node, html);
-      switch (node.type) {
-        case NODE_TYPES.PROGRAM:
-          let root = node.body[0];
-          if (root.type === NODE_TYPES.ARRAY) {
+      switch (typeof node) {
+        case "object":
+          if (node === null) {
+            html += `<span class="null">null</span>`;
+          } else if (!Array.isArray(node)) {
             pad++;
-          }
-          return walkJsonAst(root, pad, html);
-        case NODE_TYPES.OBJECT:
-          pad++;
-          html += `</div>`;
-          node.properties.forEach((child) => {
-            html += walkJsonAst(child, pad, '');
-          })
-          pad--;
-          break;
-        case NODE_TYPES.ARRAY:
-          pad++;
-          html += '<span><span class="bracket">[</span></span>';
-          html += `</div>`;
-          node.elements.forEach((child, i) => {
-            html += `<div class="line">${padLeft(pad)}<span class="number_key">${i}: </span>`;
-            html += walkJsonAst(child, pad, '');
             html += `</div>`;
-          })
-          // html += `<div>`;
-          pad--;
-          html += `<div class="line">${padLeft(pad)}<span class="bracket">]</span></div>`;
+            for (let key in node) {
+              let child = node[key];
+              html += `<div class="line">${padLeft(pad)}<span class="string_key">${key}: </span>`;
+              html += walkJsonObj(child, pad, '');
+              html += '</div>'
+            }
+            pad--;
+          } else {
+            pad++;
+            html += '<span><span class="bracket">[</span></span>';
+            html += `</div>`;
+            for (let key = 0; key < node.length; key++) {
+              let child = node[key];
+              html += `<div class="line">${padLeft(pad)}<span class="number_key">${key}: </span>`;
+              html += walkJsonObj(child, pad, '');
+              html += '</div>'
+            }
+            pad--;
+            html += `<div class="line">${padLeft(pad)}<span class="bracket">]</span></div>`;
+          }
           break;
-        case NODE_TYPES.PROPERTY:
-          html += `<div class="line">${padLeft(pad)}<span class="string_key">${node.key.value}: </span>`;
-          html += walkJsonAst(node.value, pad, '');
-          html += '</div>'
+        case 'string':
+          html += `<span class="string">"${node}"</span>`;
           break;
-        case NODE_TYPES.STRING:
-          html += `<span class="string">"${node.value}"</span>`;
+        case 'number':
+          html += `<span class="number">${node}</span>`;
           break;
-        case NODE_TYPES.NUMBER:
-          html += `<span class="number">${node.value}</span>`;
-          break;
-        case NODE_TYPES.BOOLEAN:
-          html += `<span class="boolean">${node.value}</span>`;
-          break;
-        case NODE_TYPES.NULL:
-          html += `<span class="null">null</span>`;
+        case 'boolean':
+          html += `<span class="boolean">${node}</span>`;
           break;
       }
       // console.log('OUT', node, html);
@@ -246,6 +249,8 @@
     // Fixed tokenizer not recognizing floats
     // Fixed tokenizer not negative numbers 
     // Fixed tokenizer not recognizing escaping strings 
+    // Lexer now consumes stream of chars (allowing to partially read json file)
+    // Parser now consumes stream of tokens (allowing to partially read json file)
     const TOKEN_TYPES = {
       LEFT_BRACE: 'LEFT_BRACE',
       RIGHT_BRACE: 'RIGHT_BRACE',
@@ -278,264 +283,294 @@
       }
     }
 
-    const lexer = (input) => {
-      let current = 0
-      const tokens = []
-
+    const lexer = (input, tokens = [], value = '', state = LEXER_STATES.NORMAL) => {
+      let current = 0;
       while (current < input.length) {
         let char = input[current]
+        let parsed;
 
-        if (char === '{') {
-          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACE))
-          current++
+        [parsed, char, state, value, current] = parseChar(input, char, tokens, state, value, current);
+        if (parsed) {
+          current++;
           continue
         }
 
-        if (char === '}') {
-          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACE))
-          current++
-          continue
-        }
-
-        if (char === '[') {
-          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACKET))
-          current++
-          continue
-        }
-
-        if (char === ']') {
-          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACKET))
-          current++
-          continue
-        }
-
-        if (char === ':') {
-          tokens.push(createToken(TOKEN_TYPES.COLON))
-          current++
-          continue
-        }
-
-        if (char === ',') {
-          tokens.push(createToken(TOKEN_TYPES.COMMA))
-          current++
-          continue
-        }
-
-        const WHITESPACE = /\s/
-
-        if (WHITESPACE.test(char)) {
-          current++
-          continue
-        }
-
-        const NUMBERS = /[0-9]/
-        const SEPARATOR = /\./
-        const FLOAT = /[0-9\.\-]/
-        if (FLOAT.test(char)) {
-          let value = ''
-          let hasSeparator = false;
-          while (FLOAT.test(char)) {
-            if (SEPARATOR.test(char)) {
-              if (!hasSeparator) {
-                hasSeparator = true;
-              } else {
-                throw new TypeError('Float number with more than one "."')
-              }
-            }
-            value += char
-
-            char = input[++current]
-          }
-          tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
-          continue
-        }
-
-        if (char === '"') {
-          let value = ''
-          char = input[++current]
-          try {
-
-            while (char !== '"') {
-              if (char === '\\') {
-                value += char
-                char = input[++current]
-                value += char
-                char = input[++current]
-              } else {
-                value += char
-                char = input[++current]
-              }
-            }
-            char = input[++current]
-            tokens.push(createToken(TOKEN_TYPES.STRING, value))
-          } catch (e) {
-            // console.log(tokens);
-            console.log(tokens.slice(-10));
-            // console.log(value, char, current);
-          }
-          continue
-        }
-
-        if (
-          char === 't' &&
-          input[current + 1] === 'r' &&
-          input[current + 2] === 'u' &&
-          input[current + 3] === 'e'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.TRUE))
-          current += 4
-          continue
-        }
-
-        if (
-          char === 'f' &&
-          input[current + 1] === 'a' &&
-          input[current + 2] === 'l' &&
-          input[current + 3] === 's' &&
-          input[current + 4] === 'e'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.FALSE))
-          current += 5
-          continue
-        }
-
-        if (
-          char === 'n' &&
-          input[current + 1] === 'u' &&
-          input[current + 2] === 'l' &&
-          input[current + 3] === 'l'
-        ) {
-          tokens.push(createToken(TOKEN_TYPES.NULL))
-          current += 4
-          continue
-        }
-
-        console.log(tokens);
+        console.error(char, state, value, current, tokens);
         throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
       }
 
-      return tokens
+      return [value, state];
     }
 
-    const parser = (tokens) => {
-      let current = 0
+    const WHITESPACE = /\s/
+    const SEPARATOR = /\./
+    const NUMBER = /[0-9\.\-]/
 
-      const walk = () => {
-        let token = tokens[current]
+    const LEXER_STATES = {
+      NORMAL: 'NORMAL',
+      NUMBER: 'NUMBER',
+      STRING: 'STRING',
+      TRUE_T: 'TRUE_T',
+      TRUE_R: 'TRUE_R',
+      TRUE_U: 'TRUE_U',
+      TRUE_E: 'TRUE_E',
+      FALSE_F: 'FALSE_F',
+      FALSE_A: 'FALSE_A',
+      FALSE_L: 'FALSE_L',
+      FALSE_S: 'FALSE_S',
+      FALSE_E: 'FALSE_E',
+      NULL_N: 'NULL_N',
+      NULL_U: 'NULL_U',
+      NULL_L1: 'NULL_L1',
+      NULL_L2: 'NULL_L2',
+    }
 
-        if (token.type === TOKEN_TYPES.LEFT_BRACE) {
-          token = tokens[++current]
-
-          const node = {
-            type: NODE_TYPES.OBJECT,
-            properties: [],
+    const parseChar = (input, char, tokens, state, value, current) => {
+      let parsed = true;
+      if (state === LEXER_STATES.NUMBER) {
+        if (NUMBER.test(char)) {
+          value += char
+        } else {
+          tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
+          value = ''
+          state = LEXER_STATES.NORMAL;
+        }
+      } else if (state === LEXER_STATES.STRING) {
+        if (char !== '"') {
+          if (char === '\\') {
+            value += char
+            char = input[++current]
+            value += char
+          } else {
+            value += char
           }
+        } else {
+          tokens.push(createToken(TOKEN_TYPES.STRING, value))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        }
+      } else if (state === LEXER_STATES.TRUE_T) {
+        if (char === 'r') {
+          value += char;
+          state = LEXER_STATES.TRUE_R
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.TRUE_R) {
+        if (char === 'u') {
+          value += char;
+          state = LEXER_STATES.TRUE_U
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.TRUE_U) {
+        if (char === 'e') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.TRUE))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_F) {
+        if (char === 'a') {
+          value += char;
+          state = LEXER_STATES.FALSE_A
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_A) {
+        if (char === 'l') {
+          value += char;
+          state = LEXER_STATES.FALSE_L
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_L) {
+        if (char === 's') {
+          value += char;
+          state = LEXER_STATES.FALSE_S
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.FALSE_S) {
+        if (char === 'e') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.FALSE))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_N) {
+        if (char === 'u') {
+          value += char;
+          state = LEXER_STATES.NULL_U
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_U) {
+        if (char === 'l') {
+          value += char;
+          state = LEXER_STATES.NULL_L1
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NULL_L1) {
+        if (char === 'l') {
+          value += char;
+          tokens.push(createToken(TOKEN_TYPES.NULL))
+          value = ''
+          state = LEXER_STATES.NORMAL
+        } else {
+          parsed = false;
+        }
+      } else if (state === LEXER_STATES.NORMAL) {
+        if (char === '{') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACE))
+        } else if (char === '}') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACE))
+        } else if (char === '[') {
+          tokens.push(createToken(TOKEN_TYPES.LEFT_BRACKET))
+        } else if (char === ']') {
+          tokens.push(createToken(TOKEN_TYPES.RIGHT_BRACKET))
+        } else if (char === ':') {
+          tokens.push(createToken(TOKEN_TYPES.COLON))
+        } else if (char === ',') {
+          tokens.push(createToken(TOKEN_TYPES.COMMA))
+        } else if (WHITESPACE.test(char)) {
+        } else if (NUMBER.test(char)) {
+          state = LEXER_STATES.NUMBER
+          value += char;
+        } else if (char === '"') {
+          state = LEXER_STATES.STRING
+        } else if (char === 't') {
+          state = LEXER_STATES.TRUE_T
+          value += char;
+        } else if (char === 'f') {
+          state = LEXER_STATES.FALSE_F
+          value += char;
+        } else if (char === 'n') {
+          state = LEXER_STATES.NULL_N
+          value += char;
+        } else {
+          parsed = false;
+        }
+      }
 
-          while (token.type !== TOKEN_TYPES.RIGHT_BRACE) {
-            const property = {
-              type: NODE_TYPES.PROPERTY,
-              key: token,
-              value: null,
-            }
+      return [parsed, char, state, value, current];
+    }
 
-            token = tokens[++current]
+    const PARSER_STATES = {
+      NULL: "NULL",
+      NORMAL: "NORMAL",
+      OBJECT: "OBJECT",
+      ARRAY: "ARRAY",
+    }
 
-            token = tokens[++current]
-            property.value = walk()
-            node.properties.push(property)
+    const parser = (current, tokens, pointers = []) => {
+      // console.log("PARSER", current, value, tokens, pointers);
+      while (current < tokens.length) {
+        const token = tokens[current];
 
-            token = tokens[current]
-            if (token.type === TOKEN_TYPES.COMMA) {
-              token = tokens[++current]
-            }
-          }
-
-          current++
-          return node
+        [parsed, current, pointers] = walk(current, token, pointers);
+        if (parsed) {
+          current++;
+          continue
         }
 
-        if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
-          current++
-          return {
-            type: NODE_TYPES.OBJECT,
-            properties: [],
-          }
-        }
-
-        if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
-          token = tokens[++current]
-
-          const node = {
-            type: NODE_TYPES.ARRAY,
-            elements: [],
-          }
-
-          while (token.type !== TOKEN_TYPES.RIGHT_BRACKET) {
-            node.elements.push(walk())
-            token = tokens[current]
-
-            if (token.type === TOKEN_TYPES.COMMA) {
-              token = tokens[++current]
-            }
-          }
-
-          current++
-          return node
-        }
-
-        if (token.type === TOKEN_TYPES.STRING) {
-          current++
-          return {
-            type: NODE_TYPES.STRING,
-            value: token.value,
-          }
-        }
-
-        if (token.type === TOKEN_TYPES.NUMBER) {
-          current++
-          return {
-            type: NODE_TYPES.NUMBER,
-            value: token.value,
-          }
-        }
-
-        if (token.type === TOKEN_TYPES.TRUE) {
-          current++
-          return {
-            type: NODE_TYPES.BOOLEAN,
-            value: true,
-          }
-        }
-
-        if (token.type === TOKEN_TYPES.FALSE) {
-          current++
-          return {
-            type: NODE_TYPES.BOOLEAN,
-            value: false,
-          }
-        }
-
-        if (token.type === TOKEN_TYPES.NULL) {
-          current++
-          return {
-            type: NODE_TYPES.NULL,
-            value: null,
-          }
-        }
-
+        console.error(state, current, token, tokens);
         throw new TypeError(token.type)
       }
 
-      const ast = {
-        type: NODE_TYPES.PROGRAM,
-        body: [],
+      return [current, pointers];
+    }
+
+    const setValue = (pointers, value) => {
+      const pointer = pointers[pointers.length - 1];
+      const {obj, key, state} = pointer;
+      obj[key] = value;
+      if (state === PARSER_STATES.ARRAY) {
+        pointer.key++;
+      } else {
+        pointer.isKey = true;
+      }
+    }
+
+    const walk = (current, token, pointers = []) => {
+      let value;
+      parsed = true;
+      let pointer = pointers[pointers.length - 1];
+      const {isKey, state} = pointer;
+
+      // console.log(current, "TOKEN:", token, value, pointer, JSON.stringify(pointers, null, 0));
+      if (token.type === TOKEN_TYPES.LEFT_BRACE) {
+        if (state === PARSER_STATES.NULL) {
+          pointer.obj = {};
+          pointer.state = PARSER_STATES.OBJECT;
+          pointer.isKey = true;
+          pointer.key = null;
+        } else {
+          pointers.push({obj: {}, key: null, state: PARSER_STATES.OBJECT, isKey: true});
+        }
+      } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
+        if (pointers.length > 1) {
+          value = pointers.pop().obj;
+          setValue(pointers, value);
+        }
+      } else if (token.type === TOKEN_TYPES.COMMA) {
+        // DO NOTHING
+      } else if (token.type === TOKEN_TYPES.COLON) {
+        // DO NOTHING
+      } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
+        if (state === PARSER_STATES.NULL) {
+          pointer.obj = [];
+          pointer.state = PARSER_STATES.ARRAY;
+          pointer.isKey = false;
+          pointer.key = 0;
+        } else {
+          pointers.push({obj: [], key: 0, state: PARSER_STATES.ARRAY, isKey: false});
+        }
+      } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
+        if (pointers.length > 1) {
+          value = pointers.pop().obj;
+          setValue(pointers, value);
+        }
+      } else if (token.type === TOKEN_TYPES.STRING) {
+        value = token.value;
+        if (state === PARSER_STATES.OBJECT && isKey) {
+          pointer.key = value;
+          pointer.isKey = false;
+        } else {
+          setValue(pointers, value);
+          pointer.isKey = true;
+        }
+      } else if (token.type === TOKEN_TYPES.NUMBER) {
+        setValue(pointers, +token.value);
+      } else if (token.type === TOKEN_TYPES.TRUE) {
+        setValue(pointers, true);
+      } else if (token.type === TOKEN_TYPES.FALSE) {
+        setValue(pointers, false);
+      } else if (token.type === TOKEN_TYPES.NULL) {
+        setValue(pointers, null);
+      } else {
+        parsed = false;
       }
 
-      while (current < tokens.length) {
-        ast.body.push(walk())
+      return [parsed, current, pointers];
+    }
+
+    // A function for shimming scheduler.yield and setTimeout:
+    function yieldToMain() {
+      // Use scheduler.yield if it exists:
+      if ('scheduler' in window && 'yield' in scheduler) {
+        return scheduler.yield();
       }
 
-      return ast
+      // Fall back to setTimeout:
+      return new Promise(resolve => {
+        setTimeout(resolve, 0);
+      });
     }
   </script>
 </body>
