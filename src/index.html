@@ -521,6 +521,8 @@
             } else {
               pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
               globalCounter += 1;
+
+              ind = pads.length - 1;
               values[ind] = '['
               isBrackets[ind] = true
             }
@@ -558,6 +560,7 @@
               }
               pointer.isKey = true;
 
+              ind = pads.length - 1;
               values[ind] = token.value
             }
           } else if (token.type === TOKEN_TYPES.NUMBER) {
@@ -568,6 +571,8 @@
             } else {
               pointer.isKey = true;
             }
+
+            ind = pads.length - 1;
             values[ind] = +token.value
           } else if (token.type === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
@@ -577,6 +582,8 @@
             } else {
               pointer.isKey = true;
             }
+
+            ind = pads.length - 1;
             values[ind] = true
           } else if (token.type === TOKEN_TYPES.FALSE) {
             if (parserState === PARSER_STATES.ARRAY) {
@@ -586,6 +593,8 @@
             } else {
               pointer.isKey = true;
             }
+
+            ind = pads.length - 1;
             values[ind] = false
           } else if (token.type === TOKEN_TYPES.NULL) {
             if (parserState === PARSER_STATES.ARRAY) {
@@ -595,6 +604,8 @@
             } else {
               pointer.isKey = true;
             }
+
+            ind = pads.length - 1;
             values[ind] = null
           } else {
             console.error(parserState, currentToken, token, tokens);
