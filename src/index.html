@@ -275,9 +275,9 @@
         console.timeEnd('decode' + page)
 
         // lexer
-        console.time('lexer+parser' + page);
         current = 0;
         parsed = true;
+        console.time('lexer' + page);
         while (current < input.length) {
           char = input[current]
 
@@ -469,8 +469,10 @@
             throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
           }
         }
+        console.timeEnd('lexer' + page);
 
         // parser
+        console.time('parser' + page);
         while (currentToken < tokens.length) {
           let ind = pads.length - 1;
           token = tokens[currentToken];
@@ -614,7 +616,7 @@
 
           currentToken++;
         }
-        console.timeEnd('lexer+parser' + page);
+        console.timeEnd('parser' + page);
         page++;
       }
 
