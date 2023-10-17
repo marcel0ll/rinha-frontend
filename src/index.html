@@ -129,47 +129,44 @@
   </section>
   <script>
     const TOKEN_TYPES = {
-      LEFT_BRACE: 'LEFT_BRACE',
-      RIGHT_BRACE: 'RIGHT_BRACE',
-      LEFT_BRACKET: 'LEFT_BRACKET',
-      RIGHT_BRACKET: 'RIGHT_BRACKET',
-      COLON: 'COLON',
-      COMMA: 'COMMA',
-      STRING: 'STRING',
-      NUMBER: 'NUMBER',
-      TRUE: 'TRUE',
-      FALSE: 'FALSE',
-      NULL: 'NULL',
+      LEFT_BRACE: 0,
+      RIGHT_BRACE: 1,
+      LEFT_BRACKET: 2,
+      RIGHT_BRACKET: 3,
+      COLON: 4,
+      COMMA: 5,
+      STRING: 6,
+      NUMBER: 7,
+      TRUE: 8,
+      FALSE: 9,
+      NULL: 10,
     }
 
-    const WHITESPACE = /\s/
-    const NUMBER = /[0-9\.\-]/
-
     const LEXER_STATES = {
-      NORMAL: 'NORMAL',
-      NUMBER: 'NUMBER',
-      STRING: 'STRING',
-      STRING_ESCAPING: 'STRING_ESCAPING',
-      TRUE_T: 'TRUE_T',
-      TRUE_R: 'TRUE_R',
-      TRUE_U: 'TRUE_U',
-      TRUE_E: 'TRUE_E',
-      FALSE_F: 'FALSE_F',
-      FALSE_A: 'FALSE_A',
-      FALSE_L: 'FALSE_L',
-      FALSE_S: 'FALSE_S',
-      FALSE_E: 'FALSE_E',
-      NULL_N: 'NULL_N',
-      NULL_U: 'NULL_U',
-      NULL_L1: 'NULL_L1',
-      NULL_L2: 'NULL_L2',
+      NORMAL: 0,
+      NUMBER: 1,
+      STRING: 2,
+      STRING_ESCAPING: 3,
+      TRUE_T: 4,
+      TRUE_R: 5,
+      TRUE_U: 6,
+      TRUE_E: 7,
+      FALSE_F: 8,
+      FALSE_A: 9,
+      FALSE_L: 10,
+      FALSE_S: 11,
+      FALSE_E: 12,
+      NULL_N: 13,
+      NULL_U: 14,
+      NULL_L1: 15,
+      NULL_L2: 16,
     }
 
     const PARSER_STATES = {
-      NULL: "NULL",
-      NORMAL: "NORMAL",
-      OBJECT: "OBJECT",
-      ARRAY: "ARRAY",
+      NULL: 0,
+      NORMAL: 1,
+      OBJECT: 2,
+      ARRAY: 3,
     }
 
     const menu = document.querySelector('#menu');
@@ -207,7 +204,7 @@
       let page = 0;
       let reader = new FileReader();
       // 0.5mb chunk
-      let CHUNK_SIZE = Math.ceil(10 * 512 * 1024);
+      let CHUNK_SIZE = Math.ceil(2 * 512 * 1024);
       let data;
       let input;
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
@@ -228,18 +225,18 @@
       let json = null;
       let parserState = PARSER_STATES.NORMAL;
       let pointers = [];
+      let pointer;
+      let token;
       let extraPad = 0;
+      let decoder = new TextDecoder('utf-8')
       pointers.push({key: null, state: PARSER_STATES.NULL, isKey: false});
 
       viewer.style.display = 'flex';
       menu.style.display = 'none';
 
       async function seek(start = 0, end = CHUNK_SIZE) {
-        let blob = file.slice(start, end);
-        // arrayBuffer.set((await blob.arrayBuffer()));
-        // uintArray.set(arrayBuffer);
-        data = await blob.arrayBuffer();
-        input = new TextDecoder('utf-8').decode(data);
+        data = await file.slice(start, end).arrayBuffer();
+        input = decoder.decode(data);
 
         // lexer
         current = 0;
@@ -248,7 +245,19 @@
           char = input[current]
 
           if (state === LEXER_STATES.NUMBER) {
-            if (NUMBER.test(char)) {
+            if (
+              char === '.' ||
+              char === '-' ||
+              char === '0' ||
+              char === '1' ||
+              char === '2' ||
+              char === '3' ||
+              char === '4' ||
+              char === '5' ||
+              char === '6' ||
+              char === '7' ||
+              char === '8' ||
+              char === '9') {
               value += char
             } else {
               tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
@@ -348,7 +357,8 @@
               parsed = false;
             }
           } else if (state === LEXER_STATES.NORMAL) {
-            if (char === '{') {
+            if (char === " " || char === "\n" || char === "\t" || char === "\r") {
+            } else if (char === '{') {
               tokens.push({type: TOKEN_TYPES.LEFT_BRACE})
             } else if (char === '}') {
               tokens.push({type: TOKEN_TYPES.RIGHT_BRACE})
@@ -360,8 +370,19 @@
               tokens.push({type: TOKEN_TYPES.COLON})
             } else if (char === ',') {
               tokens.push({type: TOKEN_TYPES.COMMA})
-            } else if (WHITESPACE.test(char)) {
-            } else if (NUMBER.test(char)) {
+            } else if (
+              char === '.' ||
+              char === '-' ||
+              char === '0' ||
+              char === '1' ||
+              char === '2' ||
+              char === '3' ||
+              char === '4' ||
+              char === '5' ||
+              char === '6' ||
+              char === '7' ||
+              char === '8' ||
+              char === '9') {
               state = LEXER_STATES.NUMBER
               value += char;
             } else if (char === '"') {
@@ -391,18 +412,18 @@
 
         // parser
         while (currentToken < tokens.length) {
-          const token = tokens[currentToken];
+          token = tokens[currentToken];
 
-          let pointer = pointers[pointers.length - 1];
-          const {isKey, state} = pointer;
+          pointer = pointers[pointers.length - 1];
+          parserState = pointer.state;
 
           if (token.type === TOKEN_TYPES.LEFT_BRACE) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
             }
 
-            if (state === PARSER_STATES.NULL) {
+            if (parserState === PARSER_STATES.NULL) {
               pointer.state = PARSER_STATES.OBJECT;
               pointer.isKey = true;
               pointer.key = null;
@@ -423,12 +444,12 @@
           } else if (token.type === TOKEN_TYPES.COLON) {
             // DO NOTHING
           } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
             }
 
-            if (state === PARSER_STATES.NULL) {
+            if (parserState === PARSER_STATES.NULL) {
               pointer.state = PARSER_STATES.ARRAY;
               pointer.isKey = false;
               pointer.key = 0;
@@ -444,6 +465,7 @@
               lastLine.value = '['
             }
           } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
+            let isRoot = 0;
             if (pointers.length > 1) {
               pointers.pop();
               if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
@@ -451,23 +473,25 @@
               } else {
                 pointers[pointers.length - 1].isKey = true;
               }
+            } else {
+              isRoot = 1;
             }
 
-            allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: ']'});
+            allLines.push({pad: pointers.length - 1 + extraPad - isRoot, valueType: 'bracket', value: ']'});
           } else if (token.type === TOKEN_TYPES.STRING) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
             }
 
-            if (state === PARSER_STATES.OBJECT && isKey) {
+            if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
               pointer.key = token.value;
               pointer.isKey = false;
               globalCounter += 1;
 
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'string', key: pointer.key});
             } else {
-              if (state === PARSER_STATES.ARRAY) {
+              if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
               } else {
                 pointer.isKey = true;
@@ -479,7 +503,7 @@
               lastLine.value = token.value;
             }
           } else if (token.type === TOKEN_TYPES.NUMBER) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
@@ -490,7 +514,7 @@
             lastLine.valueType = 'number';
             lastLine.value = +token.value;
           } else if (token.type === TOKEN_TYPES.TRUE) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
@@ -501,7 +525,7 @@
             lastLine.valueType = 'boolean';
             lastLine.value = true;
           } else if (token.type === TOKEN_TYPES.FALSE) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
@@ -512,7 +536,7 @@
             lastLine.valueType = 'boolean';
             lastLine.value = false;
           } else if (token.type === TOKEN_TYPES.NULL) {
-            if (state === PARSER_STATES.ARRAY) {
+            if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
               allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
@@ -523,7 +547,7 @@
             lastLine.valueType = 'null';
             lastLine.value = null;
           } else {
-            console.error(state, currentToken, token, tokens);
+            console.error(parserState, currentToken, token, tokens);
             throw new TypeError(token.type)
           }
 
@@ -618,7 +642,7 @@
     };
 
     function scroll(dir, lines) {
-      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, allLines.length));
+      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, allLines.length - linesShown + 2));
     }
 
     window.addEventListener("wheel", handleInfiniteScroll);
@@ -640,7 +664,7 @@
         totalScrolled = 0;
         renderCanvas();
       } else if (code === "End") {
-        totalScrolled = allLines.length - linesShown;
+        totalScrolled = allLines.length - linesShown + 2;
         renderCanvas();
       } else {
         console.log(e);
