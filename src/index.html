@@ -282,35 +282,82 @@
           char = input[current]
 
           if (state === LEXER_STATES.NORMAL) {
-            if (char === " " || char === "\n" || char === "\t" || char === "\r") {
-            } else if (char === '"') {
-              state = LEXER_STATES.STRING
-            } else if (char === '{') {
-              tokens.push({type: TOKEN_TYPES.LEFT_BRACE})
-            } else if (char === '}') {
-              tokens.push({type: TOKEN_TYPES.RIGHT_BRACE})
-            } else if (char === '[') {
-              tokens.push({type: TOKEN_TYPES.LEFT_BRACKET})
-            } else if (char === ']') {
-              tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET})
-            } else if (char === ':') {
-              tokens.push({type: TOKEN_TYPES.COLON})
-            } else if (char === ',') {
-              tokens.push({type: TOKEN_TYPES.COMMA})
-            } else if (char === '.' || char === '-' || (char >= '0' && char <= '9')) {
-              state = LEXER_STATES.NUMBER
-              value += char;
-            } else if (char === 't') {
-              state = LEXER_STATES.TRUE_T
-              value += char;
-            } else if (char === 'f') {
-              state = LEXER_STATES.FALSE_F
-              value += char;
-            } else if (char === 'n') {
-              state = LEXER_STATES.NULL_N
-              value += char;
-            } else {
-              parsed = false;
+            switch (char) {
+              // ignore empty space
+              case " ":
+              case "\t":
+              case "\r":
+              case "\n":
+                // do nothing
+                break;
+
+              // string start
+              case '"':
+                state = LEXER_STATES.STRING;
+                break;
+
+              case '{':
+                tokens.push({type: TOKEN_TYPES.LEFT_BRACE});
+                break;
+
+              case '}':
+                tokens.push({type: TOKEN_TYPES.RIGHT_BRACE});
+                break;
+
+              case '[':
+                tokens.push({type: TOKEN_TYPES.LEFT_BRACKET});
+                break;
+
+              case ']':
+                tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET});
+                break;
+
+              case ':':
+                tokens.push({type: TOKEN_TYPES.COLON});
+                break;
+
+              case ',':
+                tokens.push({type: TOKEN_TYPES.COMMA});
+                break;
+
+              // number
+              case '-':
+              case '.':
+              case '0':
+              case '1':
+              case '2':
+              case '3':
+              case '4':
+              case '5':
+              case '6':
+              case '7':
+              case '8':
+              case '9':
+                state = LEXER_STATES.NUMBER;
+                value += char;
+                break;
+
+              // true
+              case 't':
+                state = LEXER_STATES.TRUE_T;
+                value += char;
+                break;
+
+              // false
+              case 'f':
+                state = LEXER_STATES.FALSE_F;
+                value += char;
+                break;
+
+              // null
+              case 'n':
+                state = LEXER_STATES.NULL_N;
+                value += char;
+                break;
+
+              // character not recognized
+              default:
+                parsed = false;
             }
           } else if (state === LEXER_STATES.STRING) {
             if (char !== '"') {
