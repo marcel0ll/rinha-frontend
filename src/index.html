@@ -281,184 +281,212 @@
         while (current < input.length) {
           char = input[current]
 
-          if (state === LEXER_STATES.NORMAL) {
-            switch (char) {
-              // ignore empty space
-              case " ":
-              case "\t":
-              case "\r":
-              case "\n":
-                // do nothing
-                break;
+          switch (state) {
+            case LEXER_STATES.NORMAL:
+              switch (char) {
+                // ignore empty space
+                case " ":
+                case "\t":
+                case "\r":
+                case "\n":
+                  // do nothing
+                  break;
 
-              // string start
-              case '"':
-                state = LEXER_STATES.STRING;
-                break;
+                // string start
+                case '"':
+                  state = LEXER_STATES.STRING;
+                  break;
 
-              case '{':
-                tokens.push({type: TOKEN_TYPES.LEFT_BRACE});
-                break;
+                case '{':
+                  tokens.push({type: TOKEN_TYPES.LEFT_BRACE});
+                  break;
 
-              case '}':
-                tokens.push({type: TOKEN_TYPES.RIGHT_BRACE});
-                break;
+                case '}':
+                  tokens.push({type: TOKEN_TYPES.RIGHT_BRACE});
+                  break;
 
-              case '[':
-                tokens.push({type: TOKEN_TYPES.LEFT_BRACKET});
-                break;
+                case '[':
+                  tokens.push({type: TOKEN_TYPES.LEFT_BRACKET});
+                  break;
 
-              case ']':
-                tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET});
-                break;
+                case ']':
+                  tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET});
+                  break;
 
-              case ':':
-                tokens.push({type: TOKEN_TYPES.COLON});
-                break;
+                case ':':
+                  tokens.push({type: TOKEN_TYPES.COLON});
+                  break;
 
-              case ',':
-                tokens.push({type: TOKEN_TYPES.COMMA});
-                break;
+                case ',':
+                  tokens.push({type: TOKEN_TYPES.COMMA});
+                  break;
 
-              // number
-              case '-':
-              case '.':
-              case '0':
-              case '1':
-              case '2':
-              case '3':
-              case '4':
-              case '5':
-              case '6':
-              case '7':
-              case '8':
-              case '9':
-                state = LEXER_STATES.NUMBER;
-                value += char;
-                break;
+                // number
+                case '-':
+                case '.':
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                case '6':
+                case '7':
+                case '8':
+                case '9':
+                  state = LEXER_STATES.NUMBER;
+                  value += char;
+                  break;
 
-              // true
-              case 't':
-                state = LEXER_STATES.TRUE_T;
-                value += char;
-                break;
+                // true
+                case 't':
+                  state = LEXER_STATES.TRUE_T;
+                  value += char;
+                  break;
 
-              // false
-              case 'f':
-                state = LEXER_STATES.FALSE_F;
-                value += char;
-                break;
+                // false
+                case 'f':
+                  state = LEXER_STATES.FALSE_F;
+                  value += char;
+                  break;
 
-              // null
-              case 'n':
-                state = LEXER_STATES.NULL_N;
-                value += char;
-                break;
+                // null
+                case 'n':
+                  state = LEXER_STATES.NULL_N;
+                  value += char;
+                  break;
 
-              // character not recognized
-              default:
-                parsed = false;
-            }
-          } else if (state === LEXER_STATES.STRING) {
-            if (char !== '"') {
-              value += char
-              if (char === '\\') {
-                state = LEXER_STATES.STRING_ESCAPING
+                // character not recognized
+                default:
+                  parsed = false;
               }
-            } else {
-              tokens.push({type: TOKEN_TYPES.STRING, value: value})
-              value = ''
-              state = LEXER_STATES.NORMAL
-            }
-          } else if (state === LEXER_STATES.NUMBER) {
-            if (char === '.' || (char >= '0' && char <= '9')) {
+              break;
+
+            case LEXER_STATES.STRING:
+              if (char !== '"') {
+                value += char
+                if (char === '\\') {
+                  state = LEXER_STATES.STRING_ESCAPING
+                }
+              } else {
+                tokens.push({type: TOKEN_TYPES.STRING, value: value})
+                value = ''
+                state = LEXER_STATES.NORMAL
+              }
+              break;
+
+            case LEXER_STATES.NUMBER:
+              if (char === '.' || (char >= '0' && char <= '9')) {
+                value += char
+              } else {
+                tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
+                value = ''
+                state = LEXER_STATES.NORMAL;
+                // TODO: fix hack
+                current--;
+              }
+              break;
+
+            case LEXER_STATES.TRUE_T:
+              if (char === 'r') {
+                value += char;
+                state = LEXER_STATES.TRUE_R
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.TRUE_R:
+              if (char === 'u') {
+                value += char;
+                state = LEXER_STATES.TRUE_U
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.TRUE_U:
+              if (char === 'e') {
+                value += char;
+                tokens.push({type: TOKEN_TYPES.TRUE})
+                value = ''
+                state = LEXER_STATES.NORMAL
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.FALSE_F:
+              if (char === 'a') {
+                value += char;
+                state = LEXER_STATES.FALSE_A
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.FALSE_A:
+              if (char === 'l') {
+                value += char;
+                state = LEXER_STATES.FALSE_L
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.FALSE_L:
+              if (char === 's') {
+                value += char;
+                state = LEXER_STATES.FALSE_S
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.FALSE_S:
+              if (char === 'e') {
+                value += char;
+                tokens.push({type: TOKEN_TYPES.FALSE})
+                value = ''
+                state = LEXER_STATES.NORMAL
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.NULL_N:
+              if (char === 'u') {
+                value += char;
+                state = LEXER_STATES.NULL_U
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.NULL_U:
+              if (char === 'l') {
+                value += char;
+                state = LEXER_STATES.NULL_L1
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.NULL_L1:
+              if (char === 'l') {
+                value += char;
+                tokens.push({type: TOKEN_TYPES.NULL})
+                value = ''
+                state = LEXER_STATES.NORMAL
+              } else {
+                parsed = false;
+              }
+              break;
+
+            case LEXER_STATES.STRING_ESCAPING:
               value += char
-            } else {
-              tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
-              value = ''
-              state = LEXER_STATES.NORMAL;
-              // TODO: fix hack
-              current--;
-            }
-          } else if (state === LEXER_STATES.TRUE_T) {
-            if (char === 'r') {
-              value += char;
-              state = LEXER_STATES.TRUE_R
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.TRUE_R) {
-            if (char === 'u') {
-              value += char;
-              state = LEXER_STATES.TRUE_U
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.TRUE_U) {
-            if (char === 'e') {
-              value += char;
-              tokens.push({type: TOKEN_TYPES.TRUE})
-              value = ''
-              state = LEXER_STATES.NORMAL
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.FALSE_F) {
-            if (char === 'a') {
-              value += char;
-              state = LEXER_STATES.FALSE_A
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.FALSE_A) {
-            if (char === 'l') {
-              value += char;
-              state = LEXER_STATES.FALSE_L
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.FALSE_L) {
-            if (char === 's') {
-              value += char;
-              state = LEXER_STATES.FALSE_S
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.FALSE_S) {
-            if (char === 'e') {
-              value += char;
-              tokens.push({type: TOKEN_TYPES.FALSE})
-              value = ''
-              state = LEXER_STATES.NORMAL
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.NULL_N) {
-            if (char === 'u') {
-              value += char;
-              state = LEXER_STATES.NULL_U
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.NULL_U) {
-            if (char === 'l') {
-              value += char;
-              state = LEXER_STATES.NULL_L1
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.NULL_L1) {
-            if (char === 'l') {
-              value += char;
-              tokens.push({type: TOKEN_TYPES.NULL})
-              value = ''
-              state = LEXER_STATES.NORMAL
-            } else {
-              parsed = false;
-            }
-          } else if (state === LEXER_STATES.STRING_ESCAPING) {
-            value += char
-            state = LEXER_STATES.STRING
+              state = LEXER_STATES.STRING
+              break;
           }
 
           if (parsed) {
