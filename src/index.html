@@ -204,7 +204,7 @@
       let page = 0;
       let reader = new FileReader();
       // 0.5mb chunk
-      let CHUNK_SIZE = Math.ceil(2 * 512 * 1024);
+      let CHUNK_SIZE = Math.ceil(2 * 1024 * 1024);
       let data;
       let input;
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
@@ -247,7 +247,6 @@
           if (state === LEXER_STATES.NUMBER) {
             if (
               char === '.' ||
-              char === '-' ||
               char === '0' ||
               char === '1' ||
               char === '2' ||
