@@ -178,12 +178,10 @@
 
     let globalCounter;
     let virtualDom = null;
-    let jsonState = {
-      pad: [],
-      key: [],
-      value: [],
-      isBracket: [],
-    }
+    let pads = [];
+    let keys = [];
+    let values = [];
+    let isBrackets = [];
     let totalScrolled;
     let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
 
@@ -198,15 +196,11 @@
       fileInput.click();
     }
 
-    function getI() {
-      return jsonState.pad.length - 1;
-    }
-
     function setLine(pad, key, value, isBracket) {
-      jsonState.pad.push(pad);
-      jsonState.key.push(key);
-      jsonState.value.push(value);
-      jsonState.isBracket.push(isBracket);
+      pads.push(pad);
+      keys.push(key);
+      values.push(value);
+      isBrackets.push(isBracket);
     }
 
     fileInput.onchange = async (e) => {
@@ -229,12 +223,10 @@
       totalScrolled = 0;
       globalCounter = 0;
       virtualDom = document.createDocumentFragment();
-      jsonState = {
-        pad: [],
-        key: [],
-        value: [],
-        isBracket: [],
-      }
+      pads = [];
+      keys = [];
+      values = [];
+      isBrackets = [];
 
       let current = 0;
       let currentToken = 0;
@@ -450,6 +442,7 @@
 
         // parser
         while (currentToken < tokens.length) {
+          let ind = pads.length - 1;
           token = tokens[currentToken];
 
           pointer = pointers[pointers.length - 1];
@@ -498,8 +491,8 @@
             } else {
               pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
               globalCounter += 1;
-              jsonState.value[getI()] = '['
-              jsonState.isBracket[getI()] = true
+              values[ind] = '['
+              isBrackets[ind] = true
             }
           } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
             let isRoot = 0;
@@ -535,7 +528,7 @@
               }
               pointer.isKey = true;
 
-              jsonState.value[getI()] = token.value
+              values[ind] = token.value
             }
           } else if (token.type === TOKEN_TYPES.NUMBER) {
             if (parserState === PARSER_STATES.ARRAY) {
@@ -545,7 +538,7 @@
             } else {
               pointer.isKey = true;
             }
-            jsonState.value[getI()] = +token.value
+            values[ind] = +token.value
           } else if (token.type === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
@@ -554,7 +547,7 @@
             } else {
               pointer.isKey = true;
             }
-            jsonState.value[getI()] = true
+            values[ind] = true
           } else if (token.type === TOKEN_TYPES.FALSE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
@@ -563,7 +556,7 @@
             } else {
               pointer.isKey = true;
             }
-            jsonState.value[getI()] = false
+            values[ind] = false
           } else if (token.type === TOKEN_TYPES.NULL) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
@@ -572,7 +565,7 @@
             } else {
               pointer.isKey = true;
             }
-            jsonState.value[getI()] = null
+            values[ind] = null
           } else {
             console.error(parserState, currentToken, token, tokens);
             throw new TypeError(token.type)
@@ -623,13 +616,13 @@
       canvas.innerHTML = '';
       virtualDom = document.createDocumentFragment();
       for (var i = 0; i <= linesShown; i++) {
-        let ind = getI();
+        let ind = pads.length - 1;
         if (i + start > ind) continue;
 
-        const pad = jsonState.pad[i + start];
-        const key = jsonState.key[i + start];
-        const value = jsonState.value[i + start];
-        const isBracket = jsonState.isBracket[i + start];
+        const pad = pads[i + start];
+        const key = keys[i + start];
+        const value = values[i + start];
+        const isBracket = isBrackets[i + start];
 
         const el = baseLineElement.cloneNode(true);
 
@@ -666,13 +659,13 @@
 
       let children = canvas.children;
       for (var i = 0; i <= linesShown; i++) {
-        let ind = getI();
+        let ind = pads.length - 1;
         if (i + start > ind) continue;
 
-        const pad = jsonState.pad[i + start];
-        const key = jsonState.key[i + start];
-        const value = jsonState.value[i + start];
-        const isBracket = jsonState.isBracket[i + start];
+        const pad = pads[i + start];
+        const key = keys[i + start];
+        const value = values[i + start];
+        const isBracket = isBrackets[i + start];
 
         const el = children[i];
 
@@ -711,19 +704,20 @@
       }
     }
 
+    let scrollDy;
+    let scrollDir;
     function handleInfiniteScroll(e) {
-      let dy = (e?.deltaY || 0)
-      let dir = dy < 0 ? -1 : dy > 0 ? 1 : 0;
-      scroll(dir, 5);
+      scrollDy = (e?.deltaY || 0)
+      scrollDir = scrollDy < 0 ? -1 : scrollDy > 0 ? 1 : 0;
+      scroll(scrollDir, 5);
       renderCanvas();
     };
 
     function scroll(dir, lines) {
-      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, getI() - linesShown + 2));
+      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, pads.length - 1 - linesShown + 2));
     }
 
-    window.addEventListener("wheel", handleInfiniteScroll);
-    document.body.onkeydown = function (e) {
+    function handleKeyDown(e) {
       let code = e.code;
       if (code === "KeyJ" || code === "ArrowDown") {
         scroll(1, 5);
@@ -741,13 +735,15 @@
         totalScrolled = 0;
         renderCanvas();
       } else if (code === "End") {
-        totalScrolled = getI() - linesShown + 2;
+        totalScrolled = pads.length - 1 - linesShown + 2;
         renderCanvas();
       } else {
         console.log(e);
       }
     };
 
+    window.addEventListener("wheel", handleInfiniteScroll, false);
+    document.addEventListener("keydown", handleKeyDown, false);
   </script>
 </body>
 
