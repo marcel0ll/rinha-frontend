@@ -198,16 +198,14 @@
 
     fileInput.onchange = async (e) => {
       // console.log('changed', fileInput.files[0]);
+      console.time('fileRead');
       let file = fileInput.files[0];
       fileName.innerText = file.name;
 
-      let page = 0;
-      let reader = new FileReader();
       // 0.5mb chunk
-      let CHUNK_SIZE = Math.ceil(2 * 1024 * 1024);
+      let CHUNK_SIZE = Math.ceil(1 * 1024 * 1024);
       let data;
       let input;
-      let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
       let tokens = [];
       let allDomPages = [];
@@ -229,14 +227,31 @@
       let token;
       let extraPad = 0;
       let decoder = new TextDecoder('utf-8')
+      let stream = file.stream();
+      let reader = stream.getReader({mode: "byob"});
+      let buffer = new ArrayBuffer(CHUNK_SIZE);
+      let offset = 0;
+      let done = false;
+      // const dataView = new DataView(buffer);
+
       pointers.push({key: null, state: PARSER_STATES.NULL, isKey: false});
 
       viewer.style.display = 'flex';
       menu.style.display = 'none';
 
-      async function seek(start = 0, end = CHUNK_SIZE) {
-        data = await file.slice(start, end).arrayBuffer();
-        input = decoder.decode(data);
+      async function seek() {
+        if (done) return;
+        const result = await reader.read(new Uint8Array(buffer));
+
+        buffer = result.value.buffer;
+        if (result.done) {
+          done = true;
+          console.timeEnd('fileRead');
+          return;
+        }
+
+        // offset += result.value.byteLength;
+        input = decoder.decode(result.value);
 
         // lexer
         current = 0;
@@ -552,16 +567,14 @@
 
           currentToken++;
         }
-        page++;
       }
 
-      await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+      await seek();
       renderCanvas();
 
       async function doWork() {
-        // console.log('page', page, filePageLength, page / filePageLength);
-        if (page < filePageLength) {
-          await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
+        if (!done) {
+          await seek();
           await yieldToMain();
           doWork();
         }
