@@ -178,7 +178,12 @@
 
     let globalCounter;
     let virtualDom = null;
-    let allLines = [];
+    let jsonState = {
+      pad: [],
+      key: [],
+      value: [],
+      isBracket: [],
+    }
     let totalScrolled;
     let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
 
@@ -191,6 +196,17 @@
 
     fileSelect.onclick = (e) => {
       fileInput.click();
+    }
+
+    function getI() {
+      return jsonState.pad.length - 1;
+    }
+
+    function setLine(pad, key, value, isBracket) {
+      jsonState.pad.push(pad);
+      jsonState.key.push(key);
+      jsonState.value.push(value);
+      jsonState.isBracket.push(isBracket);
     }
 
     fileInput.onchange = async (e) => {
@@ -213,7 +229,12 @@
       totalScrolled = 0;
       globalCounter = 0;
       virtualDom = document.createDocumentFragment();
-      allLines = [];
+      jsonState = {
+        pad: [],
+        key: [],
+        value: [],
+        isBracket: [],
+      }
 
       let current = 0;
       let currentToken = 0;
@@ -243,6 +264,7 @@
         if (result.done) {
           done = true;
           console.timeEnd('fileRead');
+          console.log(jsonState);
           return;
         }
 
@@ -430,7 +452,7 @@
           if (token.type === TOKEN_TYPES.LEFT_BRACE) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -456,7 +478,7 @@
           } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -465,14 +487,13 @@
               pointer.key = 0;
               globalCounter += 2;
 
-              allLines.push({pad: pointers.length - 1 + extraPad, value: '[', isBracket: true});
+              setLine(pointers.length - 1 + extraPad, undefined, '[', true);
               extraPad = 1
             } else {
               pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
               globalCounter += 1;
-              let lastLine = allLines[allLines.length - 1];
-              lastLine.value = '['
-              lastLine.isBracket = true
+              jsonState.value[getI()] = '['
+              jsonState.isBracket[getI()] = true
             }
           } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
             let isRoot = 0;
@@ -487,11 +508,11 @@
               isRoot = 1;
             }
 
-            allLines.push({pad: pointers.length - 1 + extraPad - isRoot, value: ']', isBracket: true});
+            setLine(pointers.length - 1 + extraPad - isRoot, undefined, ']', true);
           } else if (token.type === TOKEN_TYPES.STRING) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             }
 
             if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
@@ -499,7 +520,7 @@
               pointer.isKey = false;
               globalCounter += 1;
 
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             } else {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
@@ -508,49 +529,44 @@
               }
               pointer.isKey = true;
 
-              let lastLine = allLines[allLines.length - 1];
-              lastLine.value = token.value;
+              jsonState.value[getI()] = token.value
             }
           } else if (token.type === TOKEN_TYPES.NUMBER) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             } else {
               pointer.isKey = true;
             }
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.value = +token.value;
+            jsonState.value[getI()] = +token.value
           } else if (token.type === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             } else {
               pointer.isKey = true;
             }
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.value = true;
+            jsonState.value[getI()] = true
           } else if (token.type === TOKEN_TYPES.FALSE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             } else {
               pointer.isKey = true;
             }
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.value = false;
+            jsonState.value[getI()] = false
           } else if (token.type === TOKEN_TYPES.NULL) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             } else {
               pointer.isKey = true;
             }
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.value = null;
+            jsonState.value[getI()] = null
           } else {
             console.error(parserState, currentToken, token, tokens);
             throw new TypeError(token.type)
@@ -610,10 +626,16 @@
       canvas.innerHTML = '';
       virtualDom = document.createDocumentFragment();
       for (var i = 0; i <= linesShown; i++) {
-        const line = allLines[i + start];
-        if (!line) continue;
+        let ind = getI();
+        console.log(ind)
+        if (i + start > ind) continue;
+
+        const pad = jsonState.pad[i + start];
+        const key = jsonState.key[i + start];
+        const value = jsonState.value[i + start];
+        const isBracket = jsonState.isBracket[i + start];
+
         const el = baseLineElement.cloneNode(true);
-        const {key, value, pad, isBracket} = line;
 
         // Padding
         for (var j = 0; j < pad; j++) {
@@ -648,10 +670,15 @@
 
       let children = canvas.children;
       for (var i = 0; i <= linesShown; i++) {
-        const line = allLines[i + start];
-        if (!line) continue;
+        let ind = getI();
+        if (i + start > ind) continue;
+
+        const pad = jsonState.pad[i + start];
+        const key = jsonState.key[i + start];
+        const value = jsonState.value[i + start];
+        const isBracket = jsonState.isBracket[i + start];
+
         const el = children[i];
-        const {key, value, pad, isBracket} = line;
 
         // Padding
         const columns = el.querySelectorAll('.column');
@@ -696,7 +723,7 @@
     };
 
     function scroll(dir, lines) {
-      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, allLines.length - linesShown + 2));
+      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, getI() - linesShown + 2));
     }
 
     window.addEventListener("wheel", handleInfiniteScroll);
@@ -718,7 +745,7 @@
         totalScrolled = 0;
         renderCanvas();
       } else if (code === "End") {
-        totalScrolled = allLines.length - linesShown + 2;
+        totalScrolled = getI() - linesShown + 2;
         renderCanvas();
       } else {
         console.log(e);
