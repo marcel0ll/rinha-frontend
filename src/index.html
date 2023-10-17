@@ -118,7 +118,7 @@
 <body>
   <section id="menu">
     <h1>JSON Tree Viewer</h1>
-    <h2>Simple JSON Viewer that runs completely on-client. No data exchange</h2>
+    <h2>Simple JSON Viewer that runs compvarely on-client. No data exchange</h2>
     <input type="file" id="fileInput" accept="application/JSON" style="display:none" />
     <button id="fileSelect" type="button">Load JSON</button>
     <p style="color: #BF0E0E;display: none">Invalid file. Please load a valid JSON file.</p>
@@ -128,6 +128,50 @@
     <div id="canvas"></div>
   </section>
   <script>
+    const TOKEN_TYPES = {
+      LEFT_BRACE: 'LEFT_BRACE',
+      RIGHT_BRACE: 'RIGHT_BRACE',
+      LEFT_BRACKET: 'LEFT_BRACKET',
+      RIGHT_BRACKET: 'RIGHT_BRACKET',
+      COLON: 'COLON',
+      COMMA: 'COMMA',
+      STRING: 'STRING',
+      NUMBER: 'NUMBER',
+      TRUE: 'TRUE',
+      FALSE: 'FALSE',
+      NULL: 'NULL',
+    }
+
+    const WHITESPACE = /\s/
+    const NUMBER = /[0-9\.\-]/
+
+    const LEXER_STATES = {
+      NORMAL: 'NORMAL',
+      NUMBER: 'NUMBER',
+      STRING: 'STRING',
+      STRING_ESCAPING: 'STRING_ESCAPING',
+      TRUE_T: 'TRUE_T',
+      TRUE_R: 'TRUE_R',
+      TRUE_U: 'TRUE_U',
+      TRUE_E: 'TRUE_E',
+      FALSE_F: 'FALSE_F',
+      FALSE_A: 'FALSE_A',
+      FALSE_L: 'FALSE_L',
+      FALSE_S: 'FALSE_S',
+      FALSE_E: 'FALSE_E',
+      NULL_N: 'NULL_N',
+      NULL_U: 'NULL_U',
+      NULL_L1: 'NULL_L1',
+      NULL_L2: 'NULL_L2',
+    }
+
+    const PARSER_STATES = {
+      NULL: "NULL",
+      NORMAL: "NORMAL",
+      OBJECT: "OBJECT",
+      ARRAY: "ARRAY",
+    }
+
     const menu = document.querySelector('#menu');
 
     const fileName = document.querySelector('#filename');
@@ -148,6 +192,8 @@
     baseLineElement.classList.add('line');
     baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
     // console.log(baseLineElement);
+    const baseCol = document.createElement('span');
+    baseCol.classList.add('column');
 
     fileSelect.onclick = (e) => {
       fileInput.click();
@@ -211,15 +257,14 @@
               // TODO: fix hack
               current--;
             }
+          } else if (state === LEXER_STATES.STRING_ESCAPING) {
+            value += char
+            state = LEXER_STATES.STRING
           } else if (state === LEXER_STATES.STRING) {
             if (char !== '"') {
+              value += char
               if (char === '\\') {
-                // TODO: fix hack
-                value += char
-                char = input[++current]
-                value += char
-              } else {
-                value += char
+                state = LEXER_STATES.STRING_ESCAPING
               }
             } else {
               tokens.push({type: TOKEN_TYPES.STRING, value: value})
@@ -345,7 +390,145 @@
 
 
         // parser
-        [currentToken, pointers, extraPad] = parser(currentToken, tokens, pointers, extraPad);
+        while (currentToken < tokens.length) {
+          const token = tokens[currentToken];
+
+          let pointer = pointers[pointers.length - 1];
+          const {isKey, state} = pointer;
+
+          if (token.type === TOKEN_TYPES.LEFT_BRACE) {
+            if (state === PARSER_STATES.ARRAY) {
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            }
+
+            if (state === PARSER_STATES.NULL) {
+              pointer.state = PARSER_STATES.OBJECT;
+              pointer.isKey = true;
+              pointer.key = null;
+            } else {
+              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
+            }
+          } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
+            if (pointers.length > 1) {
+              pointers.pop();
+              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+                pointers[pointers.length - 1].key += 1;
+              } else {
+                pointers[pointers.length - 1].isKey = true;
+              }
+            }
+          } else if (token.type === TOKEN_TYPES.COMMA) {
+            // DO NOTHING
+          } else if (token.type === TOKEN_TYPES.COLON) {
+            // DO NOTHING
+          } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
+            if (state === PARSER_STATES.ARRAY) {
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            }
+
+            if (state === PARSER_STATES.NULL) {
+              pointer.state = PARSER_STATES.ARRAY;
+              pointer.isKey = false;
+              pointer.key = 0;
+              globalCounter += 2;
+
+              allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: '['});
+              extraPad = 1
+            } else {
+              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
+              globalCounter += 1;
+              let lastLine = allLines[allLines.length - 1];
+              lastLine.valueType = 'bracket';
+              lastLine.value = '['
+            }
+          } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
+            if (pointers.length > 1) {
+              pointers.pop();
+              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+                pointers[pointers.length - 1].key += 1;
+              } else {
+                pointers[pointers.length - 1].isKey = true;
+              }
+            }
+
+            allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: ']'});
+          } else if (token.type === TOKEN_TYPES.STRING) {
+            if (state === PARSER_STATES.ARRAY) {
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            }
+
+            if (state === PARSER_STATES.OBJECT && isKey) {
+              pointer.key = token.value;
+              pointer.isKey = false;
+              globalCounter += 1;
+
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'string', key: pointer.key});
+            } else {
+              if (state === PARSER_STATES.ARRAY) {
+                pointer.key++;
+              } else {
+                pointer.isKey = true;
+              }
+              pointer.isKey = true;
+
+              let lastLine = allLines[allLines.length - 1];
+              lastLine.valueType = 'string';
+              lastLine.value = token.value;
+            }
+          } else if (token.type === TOKEN_TYPES.NUMBER) {
+            if (state === PARSER_STATES.ARRAY) {
+              pointer.key++;
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            } else {
+              pointer.isKey = true;
+            }
+            let lastLine = allLines[allLines.length - 1];
+            lastLine.valueType = 'number';
+            lastLine.value = +token.value;
+          } else if (token.type === TOKEN_TYPES.TRUE) {
+            if (state === PARSER_STATES.ARRAY) {
+              pointer.key++;
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            } else {
+              pointer.isKey = true;
+            }
+            let lastLine = allLines[allLines.length - 1];
+            lastLine.valueType = 'boolean';
+            lastLine.value = true;
+          } else if (token.type === TOKEN_TYPES.FALSE) {
+            if (state === PARSER_STATES.ARRAY) {
+              pointer.key++;
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            } else {
+              pointer.isKey = true;
+            }
+            let lastLine = allLines[allLines.length - 1];
+            lastLine.valueType = 'boolean';
+            lastLine.value = false;
+          } else if (token.type === TOKEN_TYPES.NULL) {
+            if (state === PARSER_STATES.ARRAY) {
+              pointer.key++;
+              globalCounter += 1;
+              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+            } else {
+              pointer.isKey = true;
+            }
+            let lastLine = allLines[allLines.length - 1];
+            lastLine.valueType = 'null';
+            lastLine.value = null;
+          } else {
+            console.error(state, currentToken, token, tokens);
+            throw new TypeError(token.type)
+          }
+
+          currentToken++;
+        }
         page++;
       }
 
@@ -372,193 +555,6 @@
     // Fixed tokenizer not recognizing escaping strings 
     // Lexer now consumes stream of chars (allowing to partially read json file)
     // Parser now consumes stream of tokens (allowing to partially read json file)
-    const TOKEN_TYPES = {
-      LEFT_BRACE: 'LEFT_BRACE',
-      RIGHT_BRACE: 'RIGHT_BRACE',
-      LEFT_BRACKET: 'LEFT_BRACKET',
-      RIGHT_BRACKET: 'RIGHT_BRACKET',
-      COLON: 'COLON',
-      COMMA: 'COMMA',
-      STRING: 'STRING',
-      NUMBER: 'NUMBER',
-      TRUE: 'TRUE',
-      FALSE: 'FALSE',
-      NULL: 'NULL',
-    }
-
-    const WHITESPACE = /\s/
-    const NUMBER = /[0-9\.\-]/
-
-    const LEXER_STATES = {
-      NORMAL: 'NORMAL',
-      NUMBER: 'NUMBER',
-      STRING: 'STRING',
-      TRUE_T: 'TRUE_T',
-      TRUE_R: 'TRUE_R',
-      TRUE_U: 'TRUE_U',
-      TRUE_E: 'TRUE_E',
-      FALSE_F: 'FALSE_F',
-      FALSE_A: 'FALSE_A',
-      FALSE_L: 'FALSE_L',
-      FALSE_S: 'FALSE_S',
-      FALSE_E: 'FALSE_E',
-      NULL_N: 'NULL_N',
-      NULL_U: 'NULL_U',
-      NULL_L1: 'NULL_L1',
-      NULL_L2: 'NULL_L2',
-    }
-
-    const PARSER_STATES = {
-      NULL: "NULL",
-      NORMAL: "NORMAL",
-      OBJECT: "OBJECT",
-      ARRAY: "ARRAY",
-    }
-
-    const parser = (current, tokens, pointers = [], extraPad) => {
-      // console.log("PARSER", current, value, tokens, pointers);
-      while (current < tokens.length) {
-        const token = tokens[current];
-
-        let pointer = pointers[pointers.length - 1];
-        const {isKey, state} = pointer;
-
-        if (token.type === TOKEN_TYPES.LEFT_BRACE) {
-          if (state === PARSER_STATES.ARRAY) {
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          }
-
-          if (state === PARSER_STATES.NULL) {
-            pointer.state = PARSER_STATES.OBJECT;
-            pointer.isKey = true;
-            pointer.key = null;
-          } else {
-            pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
-          }
-        } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
-          if (pointers.length > 1) {
-            pointers.pop();
-            if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-              pointers[pointers.length - 1].key += 1;
-            } else {
-              pointers[pointers.length - 1].isKey = true;
-            }
-          }
-        } else if (token.type === TOKEN_TYPES.COMMA) {
-          // DO NOTHING
-        } else if (token.type === TOKEN_TYPES.COLON) {
-          // DO NOTHING
-        } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
-          if (state === PARSER_STATES.ARRAY) {
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          }
-
-          if (state === PARSER_STATES.NULL) {
-            pointer.state = PARSER_STATES.ARRAY;
-            pointer.isKey = false;
-            pointer.key = 0;
-            globalCounter += 2;
-
-            allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: '['});
-            extraPad = 1
-          } else {
-            pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
-            globalCounter += 1;
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'bracket';
-            lastLine.value = '['
-          }
-        } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
-          if (pointers.length > 1) {
-            pointers.pop();
-            if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-              pointers[pointers.length - 1].key += 1;
-            } else {
-              pointers[pointers.length - 1].isKey = true;
-            }
-          }
-
-          allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: ']'});
-        } else if (token.type === TOKEN_TYPES.STRING) {
-          if (state === PARSER_STATES.ARRAY) {
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          }
-
-          if (state === PARSER_STATES.OBJECT && isKey) {
-            pointer.key = token.value;
-            pointer.isKey = false;
-            globalCounter += 1;
-
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'string', key: pointer.key});
-          } else {
-            if (state === PARSER_STATES.ARRAY) {
-              pointer.key++;
-            } else {
-              pointer.isKey = true;
-            }
-            pointer.isKey = true;
-
-            let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'string';
-            lastLine.value = token.value;
-          }
-        } else if (token.type === TOKEN_TYPES.NUMBER) {
-          if (state === PARSER_STATES.ARRAY) {
-            pointer.key++;
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          } else {
-            pointer.isKey = true;
-          }
-          let lastLine = allLines[allLines.length - 1];
-          lastLine.valueType = 'number';
-          lastLine.value = +token.value;
-        } else if (token.type === TOKEN_TYPES.TRUE) {
-          if (state === PARSER_STATES.ARRAY) {
-            pointer.key++;
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          } else {
-            pointer.isKey = true;
-          }
-          let lastLine = allLines[allLines.length - 1];
-          lastLine.valueType = 'boolean';
-          lastLine.value = true;
-        } else if (token.type === TOKEN_TYPES.FALSE) {
-          if (state === PARSER_STATES.ARRAY) {
-            pointer.key++;
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          } else {
-            pointer.isKey = true;
-          }
-          let lastLine = allLines[allLines.length - 1];
-          lastLine.valueType = 'boolean';
-          lastLine.value = false;
-        } else if (token.type === TOKEN_TYPES.NULL) {
-          if (state === PARSER_STATES.ARRAY) {
-            pointer.key++;
-            globalCounter += 1;
-            allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
-          } else {
-            pointer.isKey = true;
-          }
-          let lastLine = allLines[allLines.length - 1];
-          lastLine.valueType = 'null';
-          lastLine.value = null;
-        } else {
-          console.error(state, current, token, tokens);
-          throw new TypeError(token.type)
-        }
-
-        current++;
-      }
-
-      return [current, pointers, extraPad];
-    }
 
     // A function for shimming scheduler.yield and setTimeout:
     function yieldToMain() {
@@ -582,16 +578,15 @@
 
       canvas.innerHTML = '';
       virtualDom = document.createDocumentFragment();
-      for (let i = 0; i <= linesShown; i++) {
+      for (var i = 0; i <= linesShown; i++) {
         const line = allLines[i + start];
         if (!line) continue;
         const el = baseLineElement.cloneNode(true);
         const {key, keyType, value, valueType, pad} = line;
 
         // Padding
-        for (let j = 0; j < pad; j++) {
-          const col = document.createElement('span');
-          col.classList.add('column');
+        for (var j = 0; j < pad; j++) {
+          const col = baseCol.cloneNode();
           el.prepend(col);
         }
 
@@ -628,7 +623,7 @@
 
     window.addEventListener("wheel", handleInfiniteScroll);
     document.body.onkeydown = function (e) {
-      var code = e.code;
+      let code = e.code;
       if (code === "KeyJ" || code === "ArrowDown") {
         scroll(1, 5);
         renderCanvas();
