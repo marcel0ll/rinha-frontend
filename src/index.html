@@ -17,6 +17,8 @@
       font-family: 'Inter';
       height: 100dvh;
       margin: 0;
+      padding-bottom: 1px;
+      overflow-y: scroll;
     }
 
     body {
@@ -43,8 +45,10 @@
 
     #viewer h1 {
       font-size: 32px;
-      margin-top: 24px;
-      margin-bottom: 10px;
+      padding-top: 24px;
+      padding-bottom: 10px;
+      margin: 0;
+      height: 74px;
     }
 
     #viewer {
@@ -54,24 +58,28 @@
       display: flex;
       flex-direction: column;
       justify-content: start;
-      line-height: 1;
     }
 
     #canvas {
-      list-style-type: none;
-      counter-reset: css-counter 0;
+      /* border: 1px solid black; */
+      /* flex: 1; */
+      /* list-style-type: none; */
+      /* counter-reset: css-counter 0; */
+      position: relative;
     }
 
     .line {
-      counter-increment: css-counter 1;
+      /* counter-increment: css-counter 1; */
       display: flex;
       align-items: center;
+      position: absolute;
     }
 
-    .line:before {
-      width: 2rem;
-      content: counter(css-counter) ". ";
-    }
+    /* .line:before { */
+    /*   width: 2rem; */
+    /*   content: counter(css-counter) ". "; */
+    /*   flex-shrink: 0; */
+    /* } */
 
     .column {
       flex-shrink: 0;
@@ -85,12 +93,21 @@
 
     .line {
       height: 28px;
+      max-height: 28px;
     }
 
     .string_key {
       color: #4E9590;
       padding-right: 4px;
       font-weight: 400;
+    }
+
+    .string,
+    .boolean,
+    .number {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .number_key {
@@ -118,7 +135,9 @@
     <h1 id="filename"></h1>
     <div id="canvas"></div>
   </section>
-  <script>
+  <script type="module">
+    import IntervalTree from '@flatten-js/interval-tree'
+
     const menu = document.querySelector('#menu');
 
     const fileName = document.querySelector('#filename');
@@ -128,6 +147,11 @@
     const viewer = document.querySelector('#viewer');
     const canvas = document.querySelector('#canvas');
 
+
+    let intervalTree;
+    let globalCounter;
+    let virtualDom = null;
+
     fileSelect.onclick = (e) => {
       fileInput.click();
     }
@@ -136,7 +160,6 @@
       // console.log('changed', fileInput.files[0]);
       let file = fileInput.files[0];
       fileName.innerText = file.name;
-      canvas.innerHTML = '';
 
       let page = 0;
       let reader = new FileReader();
@@ -148,15 +171,17 @@
       let allDomPages = [];
       let value = '';
       let state = LEXER_STATES.NORMAL;
+      intervalTree = new IntervalTree()
+      globalCounter = 0;
 
 
       let currentToken = 0;
       let json = null;
       let parserState = PARSER_STATES.NORMAL;
       let pointers = [];
-      pointers.push({obj: null, key: null, state: PARSER_STATES.NULL, isKey: false});
+      pointers.push({obj: null, key: null, state: PARSER_STATES.NULL, isKey: false, count: 0});
 
-      viewer.style.display = 'block';
+      viewer.style.display = 'flex';
       menu.style.display = 'none';
 
       async function seek(start = 0, end = CHUNK_SIZE) {
@@ -169,21 +194,28 @@
         [currentToken, pointers] = parser(currentToken, tokens, pointers);
         page++;
         if (page >= filePageLength) {
-          const json = pointers[0].obj;
+          const pointer = pointers[0];
+          const json = pointer.obj;
+          console.log("LINES:", pointer.count);
           let startingPad = -1;
           if (Array.isArray(json)) {
             startingPad = 0;
           }
-          const DomPage = DOMPurify.sanitize(walkJsonObj(json, startingPad));
+
+          const domPage = DOMPurify.sanitize(walkJsonObj(json, startingPad, '', true));
+          virtualDom = document.createElement('div');
+          virtualDom.innerHTML = domPage;
           // allDomPages.push(DomPage);
-          canvas.innerHTML = DomPage;
+          // canvas.innerHTML = DomPage;
+          canvas.style.height = `${pointer.count * 28}px`
+          console.log(virtualDom);
+          console.log(intervalTree.search([1, pointer.counter]));
+          console.log(intervalTree.search([1, 3]));
         }
       }
 
-      await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
-
       async function doWork() {
-        console.log('page', page, filePageLength, page / filePageLength);
+        // console.log('page', page, filePageLength, page / filePageLength);
         if (page < filePageLength) {
           await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
           await yieldToMain();
@@ -194,8 +226,7 @@
       await doWork();
     }
 
-    const walkJsonObj = (node, pad = 0, html = '') => {
-      // console.log('IN', node, html);
+    const walkJsonObj = (node, pad = 0, html = '', root = false) => {
       switch (typeof node) {
         case "object":
           if (node === null) {
@@ -212,7 +243,11 @@
             pad--;
           } else {
             pad++;
-            html += '<span><span class="bracket">[</span></span>';
+            if (root) {
+              html += '<div class="line"><span class="bracket">[</span></div>';
+            } else {
+              html += '<span class="bracket">[</span>';
+            }
             html += `</div>`;
             for (let key = 0; key < node.length; key++) {
               let child = node[key];
@@ -263,17 +298,6 @@
       TRUE: 'TRUE',
       FALSE: 'FALSE',
       NULL: 'NULL',
-    }
-
-    const NODE_TYPES = {
-      PROGRAM: 'Program',
-      OBJECT: 'ObjectExpression',
-      ARRAY: 'ArrayExpression',
-      PROPERTY: 'Property',
-      STRING: 'StringLiteral',
-      NUMBER: 'NumberLiteral',
-      BOOLEAN: 'BooleanLiteral',
-      NULL: 'NullLiteral',
     }
 
     const createToken = (type, value) => {
@@ -327,6 +351,7 @@
 
     const parseChar = (input, char, tokens, state, value, current) => {
       let parsed = true;
+      // console.log(char, state, value, tokens);
       if (state === LEXER_STATES.NUMBER) {
         if (NUMBER.test(char)) {
           value += char
@@ -334,10 +359,13 @@
           tokens.push(createToken(TOKEN_TYPES.NUMBER, value))
           value = ''
           state = LEXER_STATES.NORMAL;
+          // TODO: fix hack
+          current--;
         }
       } else if (state === LEXER_STATES.STRING) {
         if (char !== '"') {
           if (char === '\\') {
+            // TODO: fix hack
             value += char
             char = input[++current]
             value += char
@@ -497,26 +525,48 @@
       }
     }
 
+    const sumCount = (pointers, count) => {
+      const pointer = pointers[pointers.length - 1];
+      pointer.count += count;
+    }
+
     const walk = (current, token, pointers = []) => {
       let value;
       parsed = true;
       let pointer = pointers[pointers.length - 1];
       const {isKey, state} = pointer;
 
-      // console.log(current, "TOKEN:", token, value, pointer, JSON.stringify(pointers, null, 0));
       if (token.type === TOKEN_TYPES.LEFT_BRACE) {
         if (state === PARSER_STATES.NULL) {
           pointer.obj = {};
           pointer.state = PARSER_STATES.OBJECT;
           pointer.isKey = true;
           pointer.key = null;
+          pointer.count = 0;
         } else {
-          pointers.push({obj: {}, key: null, state: PARSER_STATES.OBJECT, isKey: true});
+          pointers.push({obj: {}, key: null, state: PARSER_STATES.OBJECT, isKey: true, count: 0});
+        }
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
         }
       } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
         if (pointers.length > 1) {
-          value = pointers.pop().obj;
+          let lastPointer = pointers.pop();
+          value = lastPointer.obj;
+          count = lastPointer.count;
+
           setValue(pointers, value);
+          sumCount(pointers, count);
+          // console.log([globalCounter - count, globalCounter], value)
+          intervalTree.insert([globalCounter - count, globalCounter], value);
+        } else {
+          let lastPointer = pointers[0];
+          value = lastPointer.obj;
+          count = lastPointer.count;
+
+          // console.log([globalCounter - count, globalCounter], value)
+          intervalTree.insert([globalCounter - count, globalCounter], value);
         }
       } else if (token.type === TOKEN_TYPES.COMMA) {
         // DO NOTHING
@@ -528,35 +578,70 @@
           pointer.state = PARSER_STATES.ARRAY;
           pointer.isKey = false;
           pointer.key = 0;
+          pointer.count = 2;
+          globalCounter += 2;
         } else {
-          pointers.push({obj: [], key: 0, state: PARSER_STATES.ARRAY, isKey: false});
+          pointers.push({obj: [], key: 0, state: PARSER_STATES.ARRAY, isKey: false, count: 1});
+          globalCounter += 1;
+        }
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
         }
       } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
         if (pointers.length > 1) {
-          value = pointers.pop().obj;
+          let lastPointer = pointers.pop();
+          value = lastPointer.obj;
+          count = lastPointer.count;
+
           setValue(pointers, value);
+          sumCount(pointers, count);
         }
       } else if (token.type === TOKEN_TYPES.STRING) {
         value = token.value;
         if (state === PARSER_STATES.OBJECT && isKey) {
           pointer.key = value;
           pointer.isKey = false;
+          sumCount(pointers, 1);
+          globalCounter += 1;
         } else {
           setValue(pointers, value);
           pointer.isKey = true;
         }
+
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
+        }
       } else if (token.type === TOKEN_TYPES.NUMBER) {
         setValue(pointers, +token.value);
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
+        }
       } else if (token.type === TOKEN_TYPES.TRUE) {
         setValue(pointers, true);
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
+        }
       } else if (token.type === TOKEN_TYPES.FALSE) {
         setValue(pointers, false);
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
+        }
       } else if (token.type === TOKEN_TYPES.NULL) {
         setValue(pointers, null);
+        if (state === PARSER_STATES.ARRAY) {
+          sumCount(pointers, 1);
+          globalCounter += 1;
+        }
       } else {
         parsed = false;
       }
 
+      // console.log(current, "TOKEN:", token, pointers.map(p => p.count), pointers.map(p => p.count).reduce((acc, v) => acc+v, 0));
       return [parsed, current, pointers];
     }
 
@@ -572,6 +657,32 @@
         setTimeout(resolve, 0);
       });
     }
+
+
+
+    let currentLine = 0;
+    function handleInfiniteScroll(evt) {
+      const linesShown = Math.floor(document.body.offsetHeight / 28);
+      let docH = document.body.scrollHeight - 74;
+      let start = Math.max(0, Math.floor((window.scrollY - 74) / 28))
+      let end = Math.floor((window.scrollY + - 74 + 28 * linesShown) / 28)
+
+      canvas.innerHTML = '';
+      for(let i =0; i <= linesShown; i++) {
+        const el = virtualDom.children[i + start]?.cloneNode(true);
+        console.log(el);
+        if (!el) continue;
+        // console.log(virtualDom.children);
+
+        el.style.top = `${((i + start) * 28)}px`
+        canvas.appendChild(el);
+      }
+      console.log(start, end);
+    };
+
+    window.addEventListener("scroll", handleInfiniteScroll);
+    // handleInfiniteScroll();
+
   </script>
 </body>
 
