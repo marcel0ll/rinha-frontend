@@ -60,29 +60,17 @@
     }
 
     #canvas {
-      /* border: 1px solid black; */
-      /* flex: 1; */
-      /* list-style-type: none; */
-      /* counter-reset: css-counter 0; */
       position: relative;
     }
 
     .line {
-      /* counter-increment: css-counter 1; */
       display: flex;
       align-items: center;
-      position: absolute;
     }
-
-    /* .line:before { */
-    /*   width: 2rem; */
-    /*   content: counter(css-counter) ". "; */
-    /*   flex-shrink: 0; */
-    /* } */
 
     .column {
       flex-shrink: 0;
-      width: calc(var(--col) * 24px);
+      width: 24px;
       height: 100%;
       border-left: 1px solid #BFBFBF;
       display: inline-block;
@@ -156,11 +144,13 @@
 
     let globalCounter;
     let virtualDom = null;
+    let allLines = [];
+    let totalScrolled;
+    let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
 
     const baseLineElement = document.createElement('div');
     baseLineElement.classList.add('line');
-    baseLineElement.style.setProperty('--col', 0);
-    baseLineElement.innerHTML = `<span class="column"></span><span class="key"></span><span class="value"></span>`;
+    baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
     // console.log(baseLineElement);
 
     fileSelect.onclick = (e) => {
@@ -175,22 +165,24 @@
       let page = 0;
       let reader = new FileReader();
       // 0.5mb chunk
-      let CHUNK_SIZE = Math.ceil(128 * 1024);
+      let CHUNK_SIZE = Math.ceil(1 * 512 * 1024);
       let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
       let tokens = [];
       let allDomPages = [];
       let value = '';
       let state = LEXER_STATES.NORMAL;
+      totalScrolled = 0;
       globalCounter = 0;
       virtualDom = document.createDocumentFragment();
+      allLines = [];
 
       let currentToken = 0;
       let json = null;
       let parserState = PARSER_STATES.NORMAL;
       let pointers = [];
       let extraPad = 0;
-      pointers.push({obj: null, key: null, state: PARSER_STATES.NULL, isKey: false, count: 0});
+      pointers.push({key: null, state: PARSER_STATES.NULL, isKey: false});
 
       viewer.style.display = 'flex';
       menu.style.display = 'none';
@@ -202,15 +194,18 @@
         let snippet = new TextDecoder('utf-8').decode(data);
 
         [value, state] = lexer(snippet, tokens, value, state);
+        // console.log(JSON.parse(JSON.stringify(tokens)));
         [currentToken, pointers, extraPad] = parser(currentToken, tokens, pointers, extraPad);
+        // console.log("LINES:", allLines);
         page++;
-        requestAnimationFrame(() => {
-          canvas.style.height = `${globalCounter * 28}px`
-        });
+        // requestAnimationFrame(() => {
+        //   // console.log(globalCounter);
+        //   canvas.style.height = `${globalCounter * 28}px`
+        // });
       }
 
       await seek(page * CHUNK_SIZE, (page + 1) * CHUNK_SIZE);
-      handleInfiniteScroll();
+      renderCanvas();
 
       async function doWork() {
         // console.log('page', page, filePageLength, page / filePageLength);
@@ -477,42 +472,32 @@
     }
 
     const walk = (current, token, pointers = [], extraPad = 0) => {
-      let value;
       parsed = true;
+
       let pointer = pointers[pointers.length - 1];
       const {isKey, state} = pointer;
 
       if (token.type === TOKEN_TYPES.LEFT_BRACE) {
         if (state === PARSER_STATES.ARRAY) {
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
         }
 
         if (state === PARSER_STATES.NULL) {
-          pointer.obj = {};
           pointer.state = PARSER_STATES.OBJECT;
           pointer.isKey = true;
           pointer.key = null;
-          pointer.count = 0;
         } else {
-          pointers.push({obj: {}, key: null, state: PARSER_STATES.OBJECT, isKey: true, count: 0});
+          pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
         }
       } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
         if (pointers.length > 1) {
-          let lastPointer = pointers.pop();
-          value = lastPointer.obj;
-          count = lastPointer.count;
-
-          setValue(pointers, value);
-        } else {
-          let lastPointer = pointers[0];
-          value = lastPointer.obj;
-          count = lastPointer.count;
+          pointers.pop();
+          if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+            pointers[pointers.length - 1].key += 1;
+          } else {
+            pointers[pointers.length - 1].isKey = true;
+          }
         }
       } else if (token.type === TOKEN_TYPES.COMMA) {
         // DO NOTHING
@@ -521,145 +506,110 @@
       } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
         if (state === PARSER_STATES.ARRAY) {
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
         }
 
-
         if (state === PARSER_STATES.NULL) {
-          pointer.obj = [];
           pointer.state = PARSER_STATES.ARRAY;
           pointer.isKey = false;
           pointer.key = 0;
-          pointer.count = 2;
           globalCounter += 2;
 
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let valueEl = newLine.querySelector('.value');
-          valueEl.classList.add('bracket');
-          valueEl.innerText = '['
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: '['});
           extraPad = 1
         } else {
-          pointers.push({obj: [], key: 0, state: PARSER_STATES.ARRAY, isKey: false, count: 1});
+          pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
           globalCounter += 1;
-          let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-          valueEl.classList.add('bracket');
-          valueEl.innerText = '['
+          let lastLine = allLines[allLines.length - 1];
+          lastLine.valueType = 'bracket';
+          lastLine.value = '['
         }
 
       } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
         if (pointers.length > 1) {
-          let lastPointer = pointers.pop();
-          value = lastPointer.obj;
-          count = lastPointer.count;
-
-          setValue(pointers, value);
+          pointers.pop();
+          if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+            pointers[pointers.length - 1].key += 1;
+          } else {
+            pointers[pointers.length - 1].isKey = true;
+          }
         }
 
-        let newLine = baseLineElement.cloneNode(true);
-        newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-        let valueEl = newLine.querySelector('.value');
-        valueEl.classList.add('bracket');
-        valueEl.innerText = ']'
-        virtualDom.appendChild(newLine);
+        allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: ']'});
       } else if (token.type === TOKEN_TYPES.STRING) {
-        value = token.value;
         if (state === PARSER_STATES.ARRAY) {
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
         }
 
         if (state === PARSER_STATES.OBJECT && isKey) {
-          pointer.key = value;
+          pointer.key = token.value;
           pointer.isKey = false;
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('string');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'string', key: pointer.key});
         } else {
-          setValue(pointers, value);
+          if (state === PARSER_STATES.ARRAY) {
+            pointer.key++;
+          } else {
+            pointer.isKey = true;
+          }
           pointer.isKey = true;
 
-          let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-          valueEl.classList.add('string');
-          valueEl.innerText = value;
+          let lastLine = allLines[allLines.length - 1];
+          lastLine.valueType = 'string';
+          lastLine.value = token.value;
         }
 
       } else if (token.type === TOKEN_TYPES.NUMBER) {
-        setValue(pointers, +token.value);
         if (state === PARSER_STATES.ARRAY) {
+          pointer.key++;
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+        } else {
+          pointer.isKey = true;
         }
-        let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-        valueEl.classList.add('number');
-        valueEl.innerText = +token.value;
+        let lastLine = allLines[allLines.length - 1];
+        lastLine.valueType = 'number';
+        lastLine.value = +token.value;
       } else if (token.type === TOKEN_TYPES.TRUE) {
-        setValue(pointers, true);
         if (state === PARSER_STATES.ARRAY) {
+          pointer.key++;
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+        } else {
+          pointer.isKey = true;
         }
-        let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-        valueEl.classList.add('boolean');
-        valueEl.innerText = true;
+        let lastLine = allLines[allLines.length - 1];
+        lastLine.valueType = 'boolean';
+        lastLine.value = true;
       } else if (token.type === TOKEN_TYPES.FALSE) {
-        setValue(pointers, false);
         if (state === PARSER_STATES.ARRAY) {
+          pointer.key++;
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+        } else {
+          pointer.isKey = true;
         }
-        let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-        valueEl.classList.add('boolean');
-        valueEl.innerText = false;
+        let lastLine = allLines[allLines.length - 1];
+        lastLine.valueType = 'boolean';
+        lastLine.value = false;
       } else if (token.type === TOKEN_TYPES.NULL) {
-        setValue(pointers, null);
         if (state === PARSER_STATES.ARRAY) {
+          pointer.key++;
           globalCounter += 1;
-          let newLine = baseLineElement.cloneNode(true);
-          newLine.style.setProperty('--col', pointers.length - 1 + extraPad);
-          let keyEl = newLine.querySelector('.key');
-          keyEl.classList.add('number');
-          keyEl.innerText = `${pointer.key}:`
-          virtualDom.appendChild(newLine);
+          allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+        } else {
+          pointer.isKey = true;
         }
-        let valueEl = virtualDom.children[virtualDom.children.length - 1].querySelector('.value')
-        valueEl.classList.add('null');
-        valueEl.innerText = 'null';
+        let lastLine = allLines[allLines.length - 1];
+        lastLine.valueType = 'null';
+        lastLine.value = null;
       } else {
         parsed = false;
       }
 
-      // console.log(current, "TOKEN:", token, pointers.map(p => p.count), pointers.map(p => p.count).reduce((acc, v) => acc+v, 0));
+      // console.log(current, "TOKEN:", token, allLines, JSON.parse(JSON.stringify(pointers)));
       return [parsed, current, pointers, extraPad];
     }
 
@@ -677,26 +627,83 @@
     }
 
     let currentLine = 0;
-    function handleInfiniteScroll(evt) {
-      const linesShown = Math.floor(document.body.offsetHeight / 28);
-      let docH = document.body.scrollHeight - 74;
-      let start = Math.max(0, Math.floor((window.scrollY - 74) / 28))
-      let end = Math.floor((window.scrollY + - 74 + 28 * linesShown) / 28)
+
+    function renderCanvas() {
+      linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+      let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28))
+      // console.log(start, start + linesShown);
 
       canvas.innerHTML = '';
+      virtualDom = document.createDocumentFragment();
       for (let i = 0; i <= linesShown; i++) {
-        const el = virtualDom.children[i + start]?.cloneNode(true);
-        // console.log(el);
-        if (!el) continue;
-        // console.log(virtualDom.children);
+        const line = allLines[i + start];
+        if (!line) continue;
+        const el = baseLineElement.cloneNode(true);
+        const {key, keyType, value, valueType, pad} = line;
 
-        el.style.top = `${((i + start) * 28)}px`
-        canvas.appendChild(el);
+        // Padding
+        for (let j = 0; j < pad; j++) {
+          const col = document.createElement('span');
+          col.classList.add('column');
+          el.prepend(col);
+        }
+
+        // key
+        if (typeof key !== 'undefined') {
+          let keyEl = el.querySelector('.key');
+          keyEl.classList.add(keyType);
+          keyEl.innerText = `${key}:`
+        }
+
+        // value
+        if (typeof value !== 'undefined') {
+          let valueEl = el.querySelector('.value');
+          valueEl.classList.add(valueType);
+          valueEl.innerText = String(value);
+        }
+
+        // el.style.top = `${((i + start) * 28)}px`
+        virtualDom.appendChild(el);
       }
-      // console.log(start, end);
+      canvas.appendChild(virtualDom);
+    }
+
+    function handleInfiniteScroll(e) {
+      let dy = (e?.deltaY || 0)
+      let dir = dy < 0 ? -1 : dy > 0 ? 1 : 0;
+      scroll(dir, 5);
+      renderCanvas();
     };
 
-    window.addEventListener("scroll", handleInfiniteScroll);
+    function scroll(dir, lines) {
+      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, allLines.length));
+    }
+
+    window.addEventListener("wheel", handleInfiniteScroll);
+    document.body.onkeydown = function (e) {
+      var code = e.code;
+      if (code === "KeyJ" || code === "ArrowDown") {
+        scroll(1, 5);
+        renderCanvas();
+      } else if (code === "KeyK" || code === "ArrowUp") {
+        scroll(-1, 5);
+        renderCanvas();
+      } else if (code === "PageDown") {
+        scroll(1, 100);
+        renderCanvas();
+      } else if (code === "PageUp") {
+        scroll(-1, 100);
+        renderCanvas();
+      } else if (code === "Home") {
+        totalScrolled = 0;
+        renderCanvas();
+      } else if (code === "End") {
+        totalScrolled = allLines.length - linesShown;
+        renderCanvas();
+      } else {
+        console.log(e);
+      }
+    };
 
   </script>
 </body>
