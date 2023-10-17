@@ -257,18 +257,24 @@
       menu.style.display = 'none';
 
       async function seek() {
-        if (done) return;
+        if (done) {
+          pointers = [];
+          tokens = [];
+          delete decoder;
+          delete stream;
+          delete reader;
+          delete buffer;
+          return;
+        }
         const result = await reader.read(new Uint8Array(buffer));
 
         buffer = result.value.buffer;
         if (result.done) {
           done = true;
           console.timeEnd('fileRead');
-          console.log(jsonState);
           return;
         }
 
-        // offset += result.value.byteLength;
         input = decoder.decode(result.value);
 
         // lexer
@@ -590,15 +596,6 @@
       await doWork();
     }
 
-    // JSON tokenizer + parser
-    // inspired by: https://dev.to/vit0rr/building-a-json-parser-from-scratch-with-js-3180
-    // Adapted for rinha-frontend
-    // Fixed tokenizer not recognizing floats
-    // Fixed tokenizer not negative numbers 
-    // Fixed tokenizer not recognizing escaping strings 
-    // Lexer now consumes stream of chars (allowing to partially read json file)
-    // Parser now consumes stream of tokens (allowing to partially read json file)
-
     // A function for shimming scheduler.yield and setTimeout:
     function yieldToMain() {
       // Use scheduler.yield if it exists:
@@ -627,7 +624,6 @@
       virtualDom = document.createDocumentFragment();
       for (var i = 0; i <= linesShown; i++) {
         let ind = getI();
-        console.log(ind)
         if (i + start > ind) continue;
 
         const pad = jsonState.pad[i + start];
