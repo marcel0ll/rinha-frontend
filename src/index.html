@@ -91,14 +91,11 @@
       font-weight: 400;
     }
 
-    .string,
-    .boolean,
-    .number {
+    .value {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-
 
     .key.number,
     .number_key {
@@ -232,7 +229,6 @@
       let buffer = new ArrayBuffer(CHUNK_SIZE);
       let offset = 0;
       let done = false;
-      // const dataView = new DataView(buffer);
 
       pointers.push({key: null, state: PARSER_STATES.NULL, isKey: false});
 
@@ -434,7 +430,7 @@
           if (token.type === TOKEN_TYPES.LEFT_BRACE) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -460,7 +456,7 @@
           } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -469,14 +465,14 @@
               pointer.key = 0;
               globalCounter += 2;
 
-              allLines.push({pad: pointers.length - 1 + extraPad, valueType: 'bracket', value: '['});
+              allLines.push({pad: pointers.length - 1 + extraPad, value: '[', isBracket: true});
               extraPad = 1
             } else {
               pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
               globalCounter += 1;
               let lastLine = allLines[allLines.length - 1];
-              lastLine.valueType = 'bracket';
               lastLine.value = '['
+              lastLine.isBracket = true
             }
           } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
             let isRoot = 0;
@@ -491,11 +487,11 @@
               isRoot = 1;
             }
 
-            allLines.push({pad: pointers.length - 1 + extraPad - isRoot, valueType: 'bracket', value: ']'});
+            allLines.push({pad: pointers.length - 1 + extraPad - isRoot, value: ']', isBracket: true});
           } else if (token.type === TOKEN_TYPES.STRING) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             }
 
             if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
@@ -503,7 +499,7 @@
               pointer.isKey = false;
               globalCounter += 1;
 
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'string', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             } else {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
@@ -513,52 +509,47 @@
               pointer.isKey = true;
 
               let lastLine = allLines[allLines.length - 1];
-              lastLine.valueType = 'string';
               lastLine.value = token.value;
             }
           } else if (token.type === TOKEN_TYPES.NUMBER) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             } else {
               pointer.isKey = true;
             }
             let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'number';
             lastLine.value = +token.value;
           } else if (token.type === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             } else {
               pointer.isKey = true;
             }
             let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'boolean';
             lastLine.value = true;
           } else if (token.type === TOKEN_TYPES.FALSE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             } else {
               pointer.isKey = true;
             }
             let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'boolean';
             lastLine.value = false;
           } else if (token.type === TOKEN_TYPES.NULL) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              allLines.push({pad: pointers.length - 1 + extraPad, keyType: 'number', key: pointer.key});
+              allLines.push({pad: pointers.length - 1 + extraPad, key: pointer.key});
             } else {
               pointer.isKey = true;
             }
             let lastLine = allLines[allLines.length - 1];
-            lastLine.valueType = 'null';
             lastLine.value = null;
           } else {
             console.error(parserState, currentToken, token, tokens);
@@ -570,7 +561,7 @@
       }
 
       await seek();
-      renderCanvas();
+      renderFreshCanvas();
 
       async function doWork() {
         if (!done) {
@@ -607,8 +598,12 @@
 
     let currentLine = 0;
 
-    function renderCanvas() {
+    window.addEventListener("resize", (event) => {
       linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+      renderFreshCanvas();
+    });
+
+    function renderFreshCanvas() {
       let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28))
       // console.log(start, start + linesShown);
 
@@ -618,7 +613,7 @@
         const line = allLines[i + start];
         if (!line) continue;
         const el = baseLineElement.cloneNode(true);
-        const {key, keyType, value, valueType, pad} = line;
+        const {key, value, pad, isBracket} = line;
 
         // Padding
         for (var j = 0; j < pad; j++) {
@@ -629,12 +624,13 @@
         // key
         if (typeof key !== 'undefined') {
           let keyEl = el.querySelector('.key');
-          keyEl.classList.add(keyType);
+          keyEl.classList.add(typeof key);
           keyEl.innerText = `${key}:`
         }
 
         // value
-        if (typeof value !== 'undefined') {
+        let valueType = isBracket ? 'bracket' : typeof value;
+        if (valueType !== 'undefined') {
           let valueEl = el.querySelector('.value');
           valueEl.classList.add(valueType);
           valueEl.innerText = String(value);
@@ -644,6 +640,52 @@
         virtualDom.appendChild(el);
       }
       canvas.appendChild(virtualDom);
+    }
+
+
+    function renderCanvas() {
+      let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28))
+
+      let children = canvas.children;
+      for (var i = 0; i <= linesShown; i++) {
+        const line = allLines[i + start];
+        if (!line) continue;
+        const el = children[i];
+        const {key, value, pad, isBracket} = line;
+
+        // Padding
+        const columns = el.querySelectorAll('.column');
+        if (columns.length <= pad) {
+          for (var j = 0; j < pad - columns.length; j++) {
+            const col = baseCol.cloneNode();
+            el.prepend(col);
+          }
+        } else {
+          for (var j = 0; j < columns.length - pad; j++) {
+            columns[j].remove();
+          }
+        }
+
+        // key
+        let keyEl = el.querySelector('.key');
+        keyEl.classList.remove('number', 'string');
+        keyEl.innerText = '';
+        let keyType = typeof key;
+        if (keyType !== 'undefined') {
+          keyEl.classList.add(keyType);
+          keyEl.innerText = `${key}:`
+        }
+
+        // value
+        let valueEl = el.querySelector('.value');
+        valueEl.classList.remove('string', 'boolean', 'number', 'object', 'bracket');
+        valueEl.innerText = ''
+        let valueType = isBracket ? 'bracket' : typeof value;
+        if (valueType !== 'undefined') {
+          valueEl.classList.add(valueType);
+          valueEl.innerText = String(value);
+        }
+      }
     }
 
     function handleInfiniteScroll(e) {
