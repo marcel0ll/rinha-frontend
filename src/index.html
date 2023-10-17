@@ -248,6 +248,7 @@
       viewer.style.display = 'flex';
       menu.style.display = 'none';
 
+      let page = 0;
       async function seek() {
         if (done) {
           pointers = [];
@@ -258,6 +259,7 @@
           delete buffer;
           return;
         }
+        console.time('read' + page)
         const result = await reader.read(new Uint8Array(buffer));
 
         buffer = result.value.buffer;
@@ -267,38 +269,49 @@
           return;
         }
 
+        console.timeEnd('read' + page)
+        console.time('decode' + page)
         input = decoder.decode(result.value);
+        console.timeEnd('decode' + page)
 
         // lexer
+        console.time('lexer+parser' + page);
         current = 0;
         parsed = true;
         while (current < input.length) {
           char = input[current]
 
-          if (state === LEXER_STATES.NUMBER) {
-            if (
-              char === '.' ||
-              char === '0' ||
-              char === '1' ||
-              char === '2' ||
-              char === '3' ||
-              char === '4' ||
-              char === '5' ||
-              char === '6' ||
-              char === '7' ||
-              char === '8' ||
-              char === '9') {
-              value += char
+          if (state === LEXER_STATES.NORMAL) {
+            if (char === " " || char === "\n" || char === "\t" || char === "\r") {
+            } else if (char === '"') {
+              state = LEXER_STATES.STRING
+            } else if (char === '{') {
+              tokens.push({type: TOKEN_TYPES.LEFT_BRACE})
+            } else if (char === '}') {
+              tokens.push({type: TOKEN_TYPES.RIGHT_BRACE})
+            } else if (char === '[') {
+              tokens.push({type: TOKEN_TYPES.LEFT_BRACKET})
+            } else if (char === ']') {
+              tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET})
+            } else if (char === ':') {
+              tokens.push({type: TOKEN_TYPES.COLON})
+            } else if (char === ',') {
+              tokens.push({type: TOKEN_TYPES.COMMA})
+            } else if (char === '.' || char === '-' || (char >= '0' && char <= '9')) {
+              state = LEXER_STATES.NUMBER
+              value += char;
+            } else if (char === 't') {
+              state = LEXER_STATES.TRUE_T
+              value += char;
+            } else if (char === 'f') {
+              state = LEXER_STATES.FALSE_F
+              value += char;
+            } else if (char === 'n') {
+              state = LEXER_STATES.NULL_N
+              value += char;
             } else {
-              tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
-              value = ''
-              state = LEXER_STATES.NORMAL;
-              // TODO: fix hack
-              current--;
+              parsed = false;
             }
-          } else if (state === LEXER_STATES.STRING_ESCAPING) {
-            value += char
-            state = LEXER_STATES.STRING
           } else if (state === LEXER_STATES.STRING) {
             if (char !== '"') {
               value += char
@@ -309,6 +322,16 @@
               tokens.push({type: TOKEN_TYPES.STRING, value: value})
               value = ''
               state = LEXER_STATES.NORMAL
+            }
+          } else if (state === LEXER_STATES.NUMBER) {
+            if (char === '.' || (char >= '0' && char <= '9')) {
+              value += char
+            } else {
+              tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
+              value = ''
+              state = LEXER_STATES.NORMAL;
+              // TODO: fix hack
+              current--;
             }
           } else if (state === LEXER_STATES.TRUE_T) {
             if (char === 'r') {
@@ -386,50 +409,11 @@
             } else {
               parsed = false;
             }
-          } else if (state === LEXER_STATES.NORMAL) {
-            if (char === " " || char === "\n" || char === "\t" || char === "\r") {
-            } else if (char === '{') {
-              tokens.push({type: TOKEN_TYPES.LEFT_BRACE})
-            } else if (char === '}') {
-              tokens.push({type: TOKEN_TYPES.RIGHT_BRACE})
-            } else if (char === '[') {
-              tokens.push({type: TOKEN_TYPES.LEFT_BRACKET})
-            } else if (char === ']') {
-              tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET})
-            } else if (char === ':') {
-              tokens.push({type: TOKEN_TYPES.COLON})
-            } else if (char === ',') {
-              tokens.push({type: TOKEN_TYPES.COMMA})
-            } else if (
-              char === '.' ||
-              char === '-' ||
-              char === '0' ||
-              char === '1' ||
-              char === '2' ||
-              char === '3' ||
-              char === '4' ||
-              char === '5' ||
-              char === '6' ||
-              char === '7' ||
-              char === '8' ||
-              char === '9') {
-              state = LEXER_STATES.NUMBER
-              value += char;
-            } else if (char === '"') {
-              state = LEXER_STATES.STRING
-            } else if (char === 't') {
-              state = LEXER_STATES.TRUE_T
-              value += char;
-            } else if (char === 'f') {
-              state = LEXER_STATES.FALSE_F
-              value += char;
-            } else if (char === 'n') {
-              state = LEXER_STATES.NULL_N
-              value += char;
-            } else {
-              parsed = false;
-            }
+          } else if (state === LEXER_STATES.STRING_ESCAPING) {
+            value += char
+            state = LEXER_STATES.STRING
           }
+
           if (parsed) {
             current++;
             continue
@@ -438,7 +422,6 @@
             throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
           }
         }
-
 
         // parser
         while (currentToken < tokens.length) {
@@ -573,6 +556,8 @@
 
           currentToken++;
         }
+        console.timeEnd('lexer+parser' + page);
+        page++;
       }
 
       await seek();
