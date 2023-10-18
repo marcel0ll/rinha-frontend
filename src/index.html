@@ -127,17 +127,17 @@
   <script>
     const CHUNK_SIZE = 1024 * 1024;
     const TOKEN_TYPES = {
-      LEFT_BRACE: 0,
-      RIGHT_BRACE: 1,
-      LEFT_BRACKET: 2,
-      RIGHT_BRACKET: 3,
-      COLON: 4,
-      COMMA: 5,
-      STRING: 6,
-      NUMBER: 7,
-      TRUE: 8,
-      FALSE: 9,
-      NULL: 10,
+      LEFT_BRACE: Symbol(),
+      RIGHT_BRACE: Symbol(),
+      LEFT_BRACKET: Symbol(),
+      RIGHT_BRACKET: Symbol(),
+      COLON: Symbol(),
+      COMMA: Symbol(),
+      // STRING: Symbol(),
+      // NUMBER: Symbol(),
+      TRUE: Symbol(),
+      FALSE: Symbol(),
+      NULL: Symbol(),
     }
 
     const LEXER_STATES = {
@@ -293,30 +293,6 @@
                   subStart = current + 1;
                   break;
 
-                case '{':
-                  tokens.push({type: TOKEN_TYPES.LEFT_BRACE});
-                  break;
-
-                case '}':
-                  tokens.push({type: TOKEN_TYPES.RIGHT_BRACE});
-                  break;
-
-                case '[':
-                  tokens.push({type: TOKEN_TYPES.LEFT_BRACKET});
-                  break;
-
-                case ']':
-                  tokens.push({type: TOKEN_TYPES.RIGHT_BRACKET});
-                  break;
-
-                case ':':
-                  tokens.push({type: TOKEN_TYPES.COLON});
-                  break;
-
-                case ',':
-                  tokens.push({type: TOKEN_TYPES.COMMA});
-                  break;
-
                 // number
                 case '-':
                 case '.':
@@ -332,6 +308,30 @@
                 case '9':
                   state = LEXER_STATES.NUMBER;
                   subStart = current;
+                  break;
+
+                case ':':
+                  tokens.push(TOKEN_TYPES.COLON);
+                  break;
+
+                case ',':
+                  tokens.push(TOKEN_TYPES.COMMA);
+                  break;
+
+                case '{':
+                  tokens.push(TOKEN_TYPES.LEFT_BRACE);
+                  break;
+
+                case '}':
+                  tokens.push(TOKEN_TYPES.RIGHT_BRACE);
+                  break;
+
+                case '[':
+                  tokens.push(TOKEN_TYPES.LEFT_BRACKET);
+                  break;
+
+                case ']':
+                  tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
                   break;
 
                 // true
@@ -364,14 +364,14 @@
                   state = LEXER_STATES.STRING_ESCAPING
                 }
               } else {
-                tokens.push({type: TOKEN_TYPES.STRING, value: input.substring(subStart, current)})
+                tokens.push(input.substring(subStart, current))
                 state = LEXER_STATES.NORMAL
               }
               break;
 
             case LEXER_STATES.NUMBER:
               if (char !== '.' && (char < '0' || char > '9')) {
-                tokens.push({type: TOKEN_TYPES.NUMBER, value: +input.substring(subStart, current)})
+                tokens.push(+input.substring(subStart, current))
                 state = LEXER_STATES.NORMAL;
                 // TODO: fix hack
                 current--;
@@ -396,7 +396,7 @@
 
             case LEXER_STATES.TRUE_U:
               if (char === 'e') {
-                tokens.push({type: TOKEN_TYPES.TRUE})
+                tokens.push(TOKEN_TYPES.TRUE)
                 state = LEXER_STATES.NORMAL
               } else {
                 throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
@@ -429,7 +429,7 @@
 
             case LEXER_STATES.FALSE_S:
               if (char === 'e') {
-                tokens.push({type: TOKEN_TYPES.FALSE})
+                tokens.push(TOKEN_TYPES.FALSE)
                 state = LEXER_STATES.NORMAL
               } else {
                 throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
@@ -454,7 +454,7 @@
 
             case LEXER_STATES.NULL_L1:
               if (char === 'l') {
-                tokens.push({type: TOKEN_TYPES.NULL})
+                tokens.push(TOKEN_TYPES.NULL)
                 state = LEXER_STATES.NORMAL
               } else {
                 throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
@@ -479,7 +479,7 @@
           pointer = pointers[pointers.length - 1];
           parserState = pointer.state;
 
-          if (token.type === TOKEN_TYPES.LEFT_BRACE) {
+          if (token === TOKEN_TYPES.LEFT_BRACE) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
@@ -492,7 +492,7 @@
             } else {
               pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
             }
-          } else if (token.type === TOKEN_TYPES.RIGHT_BRACE) {
+          } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
             if (pointers.length > 1) {
               pointers.pop();
               if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
@@ -501,11 +501,11 @@
                 pointers[pointers.length - 1].isKey = true;
               }
             }
-          } else if (token.type === TOKEN_TYPES.COMMA) {
+          } else if (token === TOKEN_TYPES.COMMA) {
             // DO NOTHING
-          } else if (token.type === TOKEN_TYPES.COLON) {
+          } else if (token === TOKEN_TYPES.COLON) {
             // DO NOTHING
-          } else if (token.type === TOKEN_TYPES.LEFT_BRACKET) {
+          } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
@@ -527,7 +527,7 @@
               values[ind] = '['
               isBrackets[ind] = true
             }
-          } else if (token.type === TOKEN_TYPES.RIGHT_BRACKET) {
+          } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
             let isRoot = 0;
             if (pointers.length > 1) {
               pointers.pop();
@@ -541,14 +541,14 @@
             }
 
             setLine(pointers.length - 1 + extraPad - isRoot, undefined, ']', true);
-          } else if (token.type === TOKEN_TYPES.STRING) {
+          } else if (typeof token === 'string') {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
             }
 
             if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
-              pointer.key = token.value;
+              pointer.key = token;
               pointer.isKey = false;
               globalCounter += 1;
 
@@ -562,9 +562,9 @@
               pointer.isKey = true;
 
               ind = pads.length - 1;
-              values[ind] = token.value
+              values[ind] = token
             }
-          } else if (token.type === TOKEN_TYPES.NUMBER) {
+          } else if (typeof token === 'number') {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
@@ -574,8 +574,8 @@
             }
 
             ind = pads.length - 1;
-            values[ind] = token.value
-          } else if (token.type === TOKEN_TYPES.TRUE) {
+            values[ind] = token
+          } else if (token === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
@@ -586,7 +586,7 @@
 
             ind = pads.length - 1;
             values[ind] = true
-          } else if (token.type === TOKEN_TYPES.FALSE) {
+          } else if (token === TOKEN_TYPES.FALSE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
@@ -597,7 +597,7 @@
 
             ind = pads.length - 1;
             values[ind] = false
-          } else if (token.type === TOKEN_TYPES.NULL) {
+          } else if (token === TOKEN_TYPES.NULL) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
@@ -610,7 +610,7 @@
             values[ind] = null
           } else {
             console.error(parserState, currentToken, token, tokens);
-            throw new TypeError(token.type)
+            throw new TypeError(token)
           }
 
           currentToken++;
