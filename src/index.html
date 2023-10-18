@@ -1,803 +1,903 @@
-<!DOCTYPE>
+<!DOCTYPE >
 <html>
-
-<head>
-  <style>
-    @font-face {
-      font-family: Inter;
-      src: url(./inter_variable.ttf);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      font-family: 'Inter';
-      height: 100dvh;
-      margin: 0;
-      padding-bottom: 1px;
-      overflow-y: scroll;
-    }
-
-    body {
-      margin: 0;
-      height: 100dvh;
-      display: grid;
-      justify-content: center;
-      align-items: center;
-    }
-
-    h1 {
-      font-weight: 700;
-      line-height: 1.2;
-    }
-
-    h2 {
-      font-size: 24px;
-      font-weight: 400;
-    }
-
-    #menu {
-      text-align: center;
-    }
-
-    #viewer h1 {
-      font-size: 32px;
-      padding-top: 24px;
-      padding-bottom: 10px;
-      margin: 0;
-      height: 74px;
-    }
-
-    #viewer {
-      height: 100%;
-      width: 100dvw;
-      max-width: 638px;
-      display: flex;
-      flex-direction: column;
-      justify-content: start;
-    }
-
-    .line {
-      display: flex;
-      align-items: center;
-    }
-
-    .column {
-      flex-shrink: 0;
-      width: 24px;
-      height: 100%;
-      border-left: 1px solid #BFBFBF;
-      display: inline-block;
-      position: relative;
-      left: 1px;
-    }
-
-    .line {
-      height: 28px;
-      max-height: 28px;
-    }
-
-    .key {
-      width: 0px;
-    }
-
-    .key.string,
-    .string_key {
-      width: auto;
-      color: #4E9590;
-      padding-right: 4px;
-      font-weight: 400;
-    }
-
-    .value {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .key.number,
-    .number_key {
-      width: auto;
-      color: #BFBFBF;
-      padding-right: 4px;
-      font-weight: 400;
-    }
-
-    .symbol {
-      color: #F2CAB8;
-      font-weight: 700;
-    }
-  </style>
-</head>
-
-<body>
-  <section id="menu">
-    <h1>JSON Tree Viewer</h1>
-    <h2>Simple JSON Viewer that runs compvarely on-client. No data exchange</h2>
-    <input type="file" id="fileInput" accept="application/JSON" style="display:none" />
-    <button id="fileSelect" type="button">Load JSON</button>
-    <p style="color: #BF0E0E;display: none">Invalid file. Please load a valid JSON file.</p>
-  </section>
-  <section id="viewer" style="display: none">
-    <h1 id="filename"></h1>
-    <div id="canvas"></div>
-  </section>
-  <script>
-    const CHUNK_SIZE = 50 * 1024 * 1024;
-    const TOKEN_TYPES = {
-      LEFT_BRACE: Symbol(),
-      RIGHT_BRACE: Symbol(),
-      LEFT_BRACKET: Symbol(),
-      RIGHT_BRACKET: Symbol(),
-      COLON: Symbol(),
-      COMMA: Symbol(),
-      // STRING: Symbol(),
-      // NUMBER: Symbol(),
-      TRUE: Symbol(),
-      FALSE: Symbol(),
-      NULL: Symbol(),
-    }
-
-    const LEXER_STATES = {
-      NORMAL: Symbol(),
-      NUMBER: Symbol(),
-      STRING: Symbol(),
-      STRING_ESCAPING: Symbol(),
-      TRUE_T: Symbol(),
-      TRUE_R: Symbol(),
-      TRUE_U: Symbol(),
-      // TRUE_E: Symbol(),
-      FALSE_F: Symbol(),
-      FALSE_A: Symbol(),
-      FALSE_L: Symbol(),
-      FALSE_S: Symbol(),
-      // FALSE_E: Symbol(),
-      NULL_N: Symbol(),
-      NULL_U: Symbol(),
-      NULL_L1: Symbol(),
-      // NULL_L2: Symbol(),
-    }
-
-    const PARSER_STATES = {
-      NULL: Symbol(),
-      NORMAL: Symbol(),
-      OBJECT: Symbol(),
-      ARRAY: Symbol(),
-    }
-
-    // elements
-    const menu = document.getElementById('menu');
-
-    const fileName = document.getElementById('filename');
-    const fileSelect = document.getElementById('fileSelect');
-    const fileInput = document.getElementById('fileInput');
-
-    const viewer = document.getElementById('viewer');
-    const canvas = document.getElementById('canvas');
-
-    let globalCounter;
-    let virtualDom = null;
-    let pads = [];
-    let keys = [];
-    let values = [];
-    let totalScrolled;
-    let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
-
-    const baseLineElement = document.createElement('div');
-    baseLineElement.classList.add('line');
-    baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
-    // console.log(baseLineElement);
-    const baseCol = document.createElement('span');
-    baseCol.classList.add('column');
-
-    fileSelect.onclick = (e) => {
-      fileInput.click();
-    }
-
-    function setLine(pad, key, value) {
-      pads.push(pad);
-      keys.push(key);
-      values.push(value);
-    }
-
-    fileInput.onchange = async (e) => {
-      // console.log('changed', fileInput.files[0]);
-      performance.mark('fileRead')
-      let file = fileInput.files[0];
-      fileName.innerText = file.name;
-
-      // read + decode
-      let decoder = new TextDecoder('utf-8')
-      let buffer = new ArrayBuffer(CHUNK_SIZE);
-      let reader = file.stream().getReader({mode: "byob"});
-      let done = false;
-      let input;
-
-      //lexer
-      let current = 0;
-      let tokens = [];
-      let state = LEXER_STATES.NORMAL;
-      let char;
-
-      // parser
-      pads = [];
-      keys = [];
-      values = [];
-      let currentToken = 0;
-      let json = null;
-      let parserState = PARSER_STATES.NORMAL;
-      let pointers = [{key: null, state: PARSER_STATES.NULL, isKey: false}];
-      let pointer;
-      let token;
-      let extraPad = 0;
-
-      // html
-      totalScrolled = 0;
-      globalCounter = 0;
-      virtualDom = document.createDocumentFragment();
-
-      viewer.style.display = 'flex';
-      menu.style.display = 'none';
-
-      async function seek() {
-        if (done) {
-          pointers = [];
-          tokens = [];
-          delete decoder;
-          delete reader;
-          delete buffer;
-          return;
-        }
-        performance.mark('read')
-        const result = await reader.read(new Uint8Array(buffer));
-
-        buffer = result.value.buffer;
-        if (result.done) {
-          done = true;
-          performance.measure('fileRead', 'fileRead')
-          return;
-        }
-
-        performance.measure('read', 'read')
-        performance.mark('decode')
-        input = decoder.decode(result.value);
-        performance.measure('decode', 'decode')
-
-        // lexer
-        current = 0;
-        let subStart;
-        performance.mark('lexer');
-        let inputLen = input.length;
-        while (current < inputLen) {
-          char = input[current]
-
-          switch (state) {
-            case LEXER_STATES.NORMAL:
-              switch (char) {
-                // ignore empty space
-                case " ":
-                case "\t":
-                case "\r":
-                case "\n":
-                  // do nothing
-                  break;
-
-                // string start
-                case '"':
-                  state = LEXER_STATES.STRING;
-                  subStart = current + 1;
-                  break;
-
-                // number
-                case '0':
-                case '1':
-                case '2':
-                case '3':
-                case '4':
-                case '5':
-                case '6':
-                case '7':
-                case '8':
-                case '9':
-                case '.':
-                case '-':
-                  state = LEXER_STATES.NUMBER;
-                  subStart = current;
-                  break;
-
-                case ':':
-                  tokens.push(TOKEN_TYPES.COLON);
-                  break;
-
-                case ',':
-                  tokens.push(TOKEN_TYPES.COMMA);
-                  break;
-
-                case '{':
-                  tokens.push(TOKEN_TYPES.LEFT_BRACE);
-                  break;
-
-                case '}':
-                  tokens.push(TOKEN_TYPES.RIGHT_BRACE);
-                  break;
-
-                case '[':
-                  tokens.push(TOKEN_TYPES.LEFT_BRACKET);
-                  break;
-
-                case ']':
-                  tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
-                  break;
-
-                // true
-                case 't':
-                  state = LEXER_STATES.TRUE_T;
-                  subStart = current;
-                  break;
-
-                // false
-                case 'f':
-                  state = LEXER_STATES.FALSE_F;
-                  subStart = current;
-                  break;
-
-                // null
-                case 'n':
-                  state = LEXER_STATES.NULL_N;
-                  subStart = current;
-                  break;
-
-                // character not recognized
-                default:
-                  throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.STRING:
-              if (char !== '"') {
-                if (char === '\\') {
-                  state = LEXER_STATES.STRING_ESCAPING
-                }
-              } else {
-                tokens.push(input.substring(subStart, current))
-                state = LEXER_STATES.NORMAL
-              }
-              break;
-
-            case LEXER_STATES.NUMBER:
-              if (char !== '.' && (char < '0' || char > '9')) {
-                tokens.push(+input.substring(subStart, current))
-                state = LEXER_STATES.NORMAL;
-                // after number end, go back 1 char
-                current--;
-              }
-              break;
-
-            case LEXER_STATES.TRUE_T:
-              if (char === 'r') {
-                state = LEXER_STATES.TRUE_R
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.TRUE_R:
-              if (char === 'u') {
-                state = LEXER_STATES.TRUE_U
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.TRUE_U:
-              if (char === 'e') {
-                tokens.push(TOKEN_TYPES.TRUE)
-                state = LEXER_STATES.NORMAL
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.FALSE_F:
-              if (char === 'a') {
-                state = LEXER_STATES.FALSE_A
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.FALSE_A:
-              if (char === 'l') {
-                state = LEXER_STATES.FALSE_L
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.FALSE_L:
-              if (char === 's') {
-                state = LEXER_STATES.FALSE_S
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.FALSE_S:
-              if (char === 'e') {
-                tokens.push(TOKEN_TYPES.FALSE)
-                state = LEXER_STATES.NORMAL
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.NULL_N:
-              if (char === 'u') {
-                state = LEXER_STATES.NULL_U
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.NULL_U:
-              if (char === 'l') {
-                state = LEXER_STATES.NULL_L1
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.NULL_L1:
-              if (char === 'l') {
-                tokens.push(TOKEN_TYPES.NULL)
-                state = LEXER_STATES.NORMAL
-              } else {
-                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-              }
-              break;
-
-            case LEXER_STATES.STRING_ESCAPING:
-              state = LEXER_STATES.STRING
-              break;
-          }
-
-          current++;
-        }
-        performance.measure('lexer', 'lexer');
+  <head>
+    <style>
+      @font-face {
+        font-family: Inter;
+        src: url(./inter_variable.ttf);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        font-family: "Inter";
+        height: 100dvh;
+        margin: 0;
+        padding-bottom: 1px;
+        overflow-y: scroll;
+      }
+
+      body {
+        margin: 0;
+        height: 100dvh;
+        display: grid;
+        justify-content: center;
+        align-items: center;
+      }
+
+      h1 {
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      h2 {
+        font-size: 24px;
+        font-weight: 400;
+      }
+
+      #menu {
+        text-align: center;
+      }
+
+      #viewer h1 {
+        font-size: 32px;
+        padding-top: 24px;
+        padding-bottom: 10px;
+        margin: 0;
+        height: 74px;
+      }
+
+      #viewer {
+        height: 100%;
+        width: 100dvw;
+        max-width: 638px;
+        display: flex;
+        flex-direction: column;
+        justify-content: start;
+      }
+
+      .line {
+        display: flex;
+        align-items: center;
+      }
+
+      .column {
+        flex-shrink: 0;
+        width: 24px;
+        height: 100%;
+        border-left: 1px solid #bfbfbf;
+        display: inline-block;
+        position: relative;
+        left: 1px;
+      }
+
+      .line {
+        height: 28px;
+        max-height: 28px;
+      }
+
+      .key {
+        width: 0px;
+      }
+
+      .key.string,
+      .string_key {
+        width: auto;
+        color: #4e9590;
+        padding-right: 4px;
+        font-weight: 400;
+      }
+
+      .value {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .key.number,
+      .number_key {
+        width: auto;
+        color: #bfbfbf;
+        padding-right: 4px;
+        font-weight: 400;
+      }
+
+      .symbol {
+        color: #f2cab8;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+
+  <body>
+    <section id="menu">
+      <h1>JSON Tree Viewer</h1>
+      <h2>
+        Simple JSON Viewer that runs compvarely on-client. No data exchange
+      </h2>
+      <input
+        type="file"
+        id="fileInput"
+        accept="application/JSON"
+        style="display: none"
+      />
+      <button id="fileSelect" type="button">Load JSON</button>
+      <p style="color: #bf0e0e; display: none">
+        Invalid file. Please load a valid JSON file.
+      </p>
+    </section>
+    <section id="viewer" style="display: none">
+      <h1 id="filename"></h1>
+      <div id="canvas"></div>
+    </section>
+    <script>
+      const CHUNK_SIZE = 50 * 1024 * 1024;
+      const TOKEN_TYPES = {
+        LEFT_BRACE: Symbol(),
+        RIGHT_BRACE: Symbol(),
+        LEFT_BRACKET: Symbol(),
+        RIGHT_BRACKET: Symbol(),
+        COLON: Symbol(),
+        COMMA: Symbol(),
+        // STRING: Symbol(),
+        // NUMBER: Symbol(),
+        TRUE: Symbol(),
+        FALSE: Symbol(),
+        NULL: Symbol(),
+      };
+
+      const LEXER_STATES = {
+        NORMAL: Symbol(),
+        NUMBER: Symbol(),
+        STRING: Symbol(),
+        STRING_ESCAPING: Symbol(),
+        TRUE_T: Symbol(),
+        TRUE_R: Symbol(),
+        TRUE_U: Symbol(),
+        // TRUE_E: Symbol(),
+        FALSE_F: Symbol(),
+        FALSE_A: Symbol(),
+        FALSE_L: Symbol(),
+        FALSE_S: Symbol(),
+        // FALSE_E: Symbol(),
+        NULL_N: Symbol(),
+        NULL_U: Symbol(),
+        NULL_L1: Symbol(),
+        // NULL_L2: Symbol(),
+      };
+
+      const PARSER_STATES = {
+        NULL: Symbol(),
+        NORMAL: Symbol(),
+        OBJECT: Symbol(),
+        ARRAY: Symbol(),
+      };
+
+      // elements
+      const menu = document.getElementById("menu");
+
+      const fileName = document.getElementById("filename");
+      const fileSelect = document.getElementById("fileSelect");
+      const fileInput = document.getElementById("fileInput");
+
+      const viewer = document.getElementById("viewer");
+      const canvas = document.getElementById("canvas");
+
+      let globalCounter;
+      let virtualDom = null;
+      let pads = [];
+      let keys = [];
+      let values = [];
+      let totalScrolled;
+      let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+
+      const baseLineElement = document.createElement("div");
+      baseLineElement.classList.add("line");
+      baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
+      // console.log(baseLineElement);
+      const baseCol = document.createElement("span");
+      baseCol.classList.add("column");
+
+      fileSelect.onclick = (e) => {
+        fileInput.click();
+      };
+
+      function setLine(pad, key, value) {
+        pads.push(pad);
+        keys.push(key);
+        values.push(value);
+      }
+
+      fileInput.onchange = async (e) => {
+        // console.log('changed', fileInput.files[0]);
+        performance.mark("fileRead");
+        let file = fileInput.files[0];
+        fileName.innerText = file.name;
+
+        // read + decode
+        let decoder = new TextDecoder("utf-8");
+        let buffer = new ArrayBuffer(CHUNK_SIZE);
+        let reader = file.stream().getReader({ mode: "byob" });
+        let done = false;
+        let input;
+
+        //lexer
+        let current = 0;
+        let tokens = [];
+        let state = LEXER_STATES.NORMAL;
+        let char;
 
         // parser
-        performance.mark('parser');
-        let tokensLen = tokens.length;
-        while (currentToken < tokensLen) {
-          let ind = pads.length - 1;
-          token = tokens[currentToken];
-          pointer = pointers[pointers.length - 1];
-          parserState = pointer.state;
+        pads = [];
+        keys = [];
+        values = [];
+        let currentToken = 0;
+        let json = null;
+        let parserState = PARSER_STATES.NORMAL;
+        let pointers = [{ key: null, state: PARSER_STATES.NULL, isKey: false }];
+        let pointer;
+        let token;
+        let extraPad = 0;
 
-          if (typeof token === 'string') {
-            if (parserState === PARSER_STATES.ARRAY) {
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+        // html
+        totalScrolled = 0;
+        globalCounter = 0;
+        virtualDom = document.createDocumentFragment();
+
+        viewer.style.display = "flex";
+        menu.style.display = "none";
+
+        async function seek() {
+          if (done) {
+            pointers = [];
+            tokens = [];
+            delete decoder;
+            delete reader;
+            delete buffer;
+            return;
+          }
+          performance.mark("read");
+          const result = await reader.read(new Uint8Array(buffer));
+
+          buffer = result.value.buffer;
+          if (result.done) {
+            done = true;
+            performance.measure("fileRead", "fileRead");
+            return;
+          }
+
+          performance.measure("read", "read");
+          performance.mark("decode");
+          input = decoder.decode(result.value);
+          performance.measure("decode", "decode");
+
+          // lexer
+          current = 0;
+          let subStart;
+          performance.mark("lexer");
+          let inputLen = input.length;
+          while (current < inputLen) {
+            char = input[current];
+
+            switch (state) {
+              case LEXER_STATES.NORMAL:
+                switch (char) {
+                  // ignore empty space
+                  case " ":
+                  case "\t":
+                  case "\r":
+                  case "\n":
+                    // do nothing
+                    break;
+
+                  // string start
+                  case '"':
+                    state = LEXER_STATES.STRING;
+                    subStart = current + 1;
+                    break;
+
+                  // number
+                  case "0":
+                  case "1":
+                  case "2":
+                  case "3":
+                  case "4":
+                  case "5":
+                  case "6":
+                  case "7":
+                  case "8":
+                  case "9":
+                  case ".":
+                  case "-":
+                    state = LEXER_STATES.NUMBER;
+                    subStart = current;
+                    break;
+
+                  case ":":
+                    tokens.push(TOKEN_TYPES.COLON);
+                    break;
+
+                  case ",":
+                    tokens.push(TOKEN_TYPES.COMMA);
+                    break;
+
+                  case "{":
+                    tokens.push(TOKEN_TYPES.LEFT_BRACE);
+                    break;
+
+                  case "}":
+                    tokens.push(TOKEN_TYPES.RIGHT_BRACE);
+                    break;
+
+                  case "[":
+                    tokens.push(TOKEN_TYPES.LEFT_BRACKET);
+                    break;
+
+                  case "]":
+                    tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
+                    break;
+
+                  // true
+                  case "t":
+                    state = LEXER_STATES.TRUE_T;
+                    subStart = current;
+                    break;
+
+                  // false
+                  case "f":
+                    state = LEXER_STATES.FALSE_F;
+                    subStart = current;
+                    break;
+
+                  // null
+                  case "n":
+                    state = LEXER_STATES.NULL_N;
+                    subStart = current;
+                    break;
+
+                  // character not recognized
+                  default:
+                    throw new TypeError(
+                      "I dont know what this character is: " +
+                        char +
+                        " c:" +
+                        current,
+                    );
+                }
+                break;
+
+              case LEXER_STATES.STRING:
+                if (char !== '"') {
+                  if (char === "\\") {
+                    state = LEXER_STATES.STRING_ESCAPING;
+                  }
+                } else {
+                  tokens.push(input.substring(subStart, current));
+                  state = LEXER_STATES.NORMAL;
+                }
+                break;
+
+              case LEXER_STATES.NUMBER:
+                if (char !== "." && (char < "0" || char > "9")) {
+                  tokens.push(+input.substring(subStart, current));
+                  state = LEXER_STATES.NORMAL;
+                  // after number end, go back 1 char
+                  current--;
+                }
+                break;
+
+              case LEXER_STATES.TRUE_T:
+                if (char === "r") {
+                  state = LEXER_STATES.TRUE_R;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.TRUE_R:
+                if (char === "u") {
+                  state = LEXER_STATES.TRUE_U;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.TRUE_U:
+                if (char === "e") {
+                  tokens.push(TOKEN_TYPES.TRUE);
+                  state = LEXER_STATES.NORMAL;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.FALSE_F:
+                if (char === "a") {
+                  state = LEXER_STATES.FALSE_A;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.FALSE_A:
+                if (char === "l") {
+                  state = LEXER_STATES.FALSE_L;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.FALSE_L:
+                if (char === "s") {
+                  state = LEXER_STATES.FALSE_S;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.FALSE_S:
+                if (char === "e") {
+                  tokens.push(TOKEN_TYPES.FALSE);
+                  state = LEXER_STATES.NORMAL;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.NULL_N:
+                if (char === "u") {
+                  state = LEXER_STATES.NULL_U;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.NULL_U:
+                if (char === "l") {
+                  state = LEXER_STATES.NULL_L1;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.NULL_L1:
+                if (char === "l") {
+                  tokens.push(TOKEN_TYPES.NULL);
+                  state = LEXER_STATES.NORMAL;
+                } else {
+                  throw new TypeError(
+                    "I dont know what this character is: " +
+                      char +
+                      " c:" +
+                      current,
+                  );
+                }
+                break;
+
+              case LEXER_STATES.STRING_ESCAPING:
+                state = LEXER_STATES.STRING;
+                break;
             }
 
-            if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
-              pointer.key = token;
-              pointer.isKey = false;
-              globalCounter += 1;
+            current++;
+          }
+          performance.measure("lexer", "lexer");
 
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            } else {
+          // parser
+          performance.mark("parser");
+          let tokensLen = tokens.length;
+          while (currentToken < tokensLen) {
+            let ind = pads.length - 1;
+            token = tokens[currentToken];
+            pointer = pointers[pointers.length - 1];
+            parserState = pointer.state;
+
+            if (typeof token === "string") {
+              if (parserState === PARSER_STATES.ARRAY) {
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              }
+
+              if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
+                pointer.key = token;
+                pointer.isKey = false;
+                globalCounter += 1;
+
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              } else {
+                if (parserState === PARSER_STATES.ARRAY) {
+                  pointer.key++;
+                } else {
+                  pointer.isKey = true;
+                }
+                pointer.isKey = true;
+
+                ind = pads.length - 1;
+                values[ind] = token;
+              }
+            } else if (typeof token === "number") {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
-              pointer.isKey = true;
 
               ind = pads.length - 1;
-              values[ind] = token
-            }
-          } else if (typeof token === 'number') {
-            if (parserState === PARSER_STATES.ARRAY) {
-              pointer.key++;
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            } else {
-              pointer.isKey = true;
-            }
-
-            ind = pads.length - 1;
-            values[ind] = token
-
-          } else if (token === TOKEN_TYPES.COLON) {
-            // DO NOTHING
-          } else if (token === TOKEN_TYPES.COMMA) {
-            // DO NOTHING
-          } else if (token === TOKEN_TYPES.LEFT_BRACE) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
-            } else if (parserState === PARSER_STATES.NULL) {
-              pointer.state = PARSER_STATES.OBJECT;
-              pointer.isKey = true;
-              pointer.key = null;
-            } else {
-              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
-            }
-          } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
-            if (pointers.length > 1) {
-              pointers.pop();
-              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-                pointers[pointers.length - 1].key += 1;
+              values[ind] = token;
+            } else if (token === TOKEN_TYPES.COLON) {
+              // DO NOTHING
+            } else if (token === TOKEN_TYPES.COMMA) {
+              // DO NOTHING
+            } else if (token === TOKEN_TYPES.LEFT_BRACE) {
+              if (parserState === PARSER_STATES.ARRAY) {
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                pointers.push({
+                  key: null,
+                  state: PARSER_STATES.OBJECT,
+                  isKey: true,
+                });
+              } else if (parserState === PARSER_STATES.NULL) {
+                pointer.state = PARSER_STATES.OBJECT;
+                pointer.isKey = true;
+                pointer.key = null;
               } else {
-                pointers[pointers.length - 1].isKey = true;
+                pointers.push({
+                  key: null,
+                  state: PARSER_STATES.OBJECT,
+                  isKey: true,
+                });
               }
-            }
-          } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+            } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
+              if (pointers.length > 1) {
+                pointers.pop();
+                if (
+                  pointers[pointers.length - 1].state === PARSER_STATES.ARRAY
+                ) {
+                  pointers[pointers.length - 1].key += 1;
+                } else {
+                  pointers[pointers.length - 1].isKey = true;
+                }
+              }
+            } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
+              if (parserState === PARSER_STATES.ARRAY) {
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
 
-              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
-              globalCounter += 1;
+                pointers.push({
+                  key: 0,
+                  state: PARSER_STATES.ARRAY,
+                  isKey: false,
+                });
+                globalCounter += 1;
 
-              ind = pads.length - 1;
-              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
-            } else if (parserState === PARSER_STATES.NULL) {
-              pointer.state = PARSER_STATES.ARRAY;
-              pointer.isKey = false;
-              pointer.key = 0;
-              globalCounter += 2;
+                ind = pads.length - 1;
+                values[ind] = TOKEN_TYPES.LEFT_BRACKET;
+              } else if (parserState === PARSER_STATES.NULL) {
+                pointer.state = PARSER_STATES.ARRAY;
+                pointer.isKey = false;
+                pointer.key = 0;
+                globalCounter += 2;
 
-              setLine(pointers.length - 1 + extraPad, undefined, TOKEN_TYPES.LEFT_BRACKET);
-              extraPad = 1
-            } else {
-              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
-              globalCounter += 1;
-
-              ind = pads.length - 1;
-              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
-            }
-          } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
-            let isRoot = 0;
-            if (pointers.length > 1) {
-              pointers.pop();
-              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-                pointers[pointers.length - 1].key += 1;
+                setLine(
+                  pointers.length - 1 + extraPad,
+                  undefined,
+                  TOKEN_TYPES.LEFT_BRACKET,
+                );
+                extraPad = 1;
               } else {
-                pointers[pointers.length - 1].isKey = true;
+                pointers.push({
+                  key: 0,
+                  state: PARSER_STATES.ARRAY,
+                  isKey: false,
+                });
+                globalCounter += 1;
+
+                ind = pads.length - 1;
+                values[ind] = TOKEN_TYPES.LEFT_BRACKET;
               }
+            } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
+              let isRoot = 0;
+              if (pointers.length > 1) {
+                pointers.pop();
+                if (
+                  pointers[pointers.length - 1].state === PARSER_STATES.ARRAY
+                ) {
+                  pointers[pointers.length - 1].key += 1;
+                } else {
+                  pointers[pointers.length - 1].isKey = true;
+                }
+              } else {
+                isRoot = 1;
+              }
+
+              setLine(
+                pointers.length - 1 + extraPad - isRoot,
+                undefined,
+                TOKEN_TYPES.RIGHT_BRACKET,
+              );
+            } else if (token === TOKEN_TYPES.TRUE) {
+              if (parserState === PARSER_STATES.ARRAY) {
+                pointer.key++;
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              } else {
+                pointer.isKey = true;
+              }
+
+              ind = pads.length - 1;
+              values[ind] = true;
+            } else if (token === TOKEN_TYPES.FALSE) {
+              if (parserState === PARSER_STATES.ARRAY) {
+                pointer.key++;
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              } else {
+                pointer.isKey = true;
+              }
+
+              ind = pads.length - 1;
+              values[ind] = false;
+            } else if (token === TOKEN_TYPES.NULL) {
+              if (parserState === PARSER_STATES.ARRAY) {
+                pointer.key++;
+                globalCounter += 1;
+                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              } else {
+                pointer.isKey = true;
+              }
+
+              ind = pads.length - 1;
+              values[ind] = null;
             } else {
-              isRoot = 1;
+              console.error(parserState, currentToken, token, tokens);
+              throw new TypeError(token);
             }
 
-            setLine(pointers.length - 1 + extraPad - isRoot, undefined, TOKEN_TYPES.RIGHT_BRACKET);
-          } else if (token === TOKEN_TYPES.TRUE) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              pointer.key++;
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            } else {
-              pointer.isKey = true;
-            }
-
-            ind = pads.length - 1;
-            values[ind] = true
-          } else if (token === TOKEN_TYPES.FALSE) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              pointer.key++;
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            } else {
-              pointer.isKey = true;
-            }
-
-            ind = pads.length - 1;
-            values[ind] = false
-          } else if (token === TOKEN_TYPES.NULL) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              pointer.key++;
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            } else {
-              pointer.isKey = true;
-            }
-
-            ind = pads.length - 1;
-            values[ind] = null
-          } else {
-            console.error(parserState, currentToken, token, tokens);
-            throw new TypeError(token)
+            currentToken++;
           }
-
-          currentToken++;
+          performance.measure("parser", "parser");
         }
-        performance.measure('parser', 'parser');
-      }
 
-      await seek();
-      renderFreshCanvas();
+        await seek();
+        renderFreshCanvas();
 
-      async function doWork() {
-        if (!done) {
-          await seek();
-          await yieldToMain();
-          doWork();
+        async function doWork() {
+          if (!done) {
+            await seek();
+            await yieldToMain();
+            doWork();
+          }
         }
+
+        await doWork();
+      };
+
+      // A function for shimming scheduler.yield and setTimeout:
+      function yieldToMain() {
+        // Use scheduler.yield if it exists:
+        if ("scheduler" in window && "yield" in scheduler) {
+          return scheduler.yield();
+        }
+
+        // Fall back to setTimeout:
+        return new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
       }
 
-      await doWork();
-    }
+      let currentLine = 0;
 
-    // A function for shimming scheduler.yield and setTimeout:
-    function yieldToMain() {
-      // Use scheduler.yield if it exists:
-      if ('scheduler' in window && 'yield' in scheduler) {
-        return scheduler.yield();
-      }
-
-      // Fall back to setTimeout:
-      return new Promise(resolve => {
-        setTimeout(resolve, 0);
+      window.addEventListener("resize", (event) => {
+        linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+        renderFreshCanvas();
       });
-    }
 
-    let currentLine = 0;
+      function renderFreshCanvas() {
+        let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28));
+        // console.log(start, start + linesShown);
 
-    window.addEventListener("resize", (event) => {
-      linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
-      renderFreshCanvas();
-    });
+        canvas.innerHTML = "";
+        virtualDom = document.createDocumentFragment();
+        for (var i = 0; i <= linesShown; i++) {
+          let ind = pads.length - 1;
+          if (i + start > ind) continue;
 
-    function renderFreshCanvas() {
-      let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28))
-      // console.log(start, start + linesShown);
+          const pad = pads[i + start];
+          const key = keys[i + start];
+          const value = values[i + start];
 
-      canvas.innerHTML = '';
-      virtualDom = document.createDocumentFragment();
-      for (var i = 0; i <= linesShown; i++) {
-        let ind = pads.length - 1;
-        if (i + start > ind) continue;
+          const el = baseLineElement.cloneNode(true);
 
-        const pad = pads[i + start];
-        const key = keys[i + start];
-        const value = values[i + start];
-
-        const el = baseLineElement.cloneNode(true);
-
-        // Padding
-        for (var j = 0; j < pad; j++) {
-          const col = baseCol.cloneNode();
-          el.prepend(col);
-        }
-
-        // key
-        if (typeof key !== 'undefined') {
-          let keyEl = el.querySelector('.key');
-          keyEl.classList.add(typeof key);
-          keyEl.innerText = `${key}:`
-        }
-
-        // value
-        let valueType = typeof value;
-        if (valueType !== 'undefined') {
-          let valueEl = el.querySelector('.value');
-          valueEl.classList.add(valueType);
-          if (value === TOKEN_TYPES.LEFT_BRACKET) {
-            valueEl.innerText = '[';
-          } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
-            valueEl.innerText = ']';
-          } else {
-            valueEl.innerText = String(value);
-          }
-        }
-
-        // el.style.top = `${((i + start) * 28)}px`
-        virtualDom.appendChild(el);
-      }
-      canvas.appendChild(virtualDom);
-    }
-
-
-    function renderCanvas() {
-      let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28))
-
-      let children = canvas.children;
-      for (var i = 0; i <= linesShown; i++) {
-        let ind = pads.length - 1;
-        if (i + start > ind) continue;
-
-        const pad = pads[i + start];
-        const key = keys[i + start];
-        const value = values[i + start];
-
-        const el = children[i];
-
-        // Padding
-        const columns = el.querySelectorAll('.column');
-        if (columns.length <= pad) {
-          for (var j = 0; j < pad - columns.length; j++) {
+          // Padding
+          for (var j = 0; j < pad; j++) {
             const col = baseCol.cloneNode();
             el.prepend(col);
           }
-        } else {
-          for (var j = 0; j < columns.length - pad; j++) {
-            columns[j].remove();
+
+          // key
+          if (typeof key !== "undefined") {
+            let keyEl = el.querySelector(".key");
+            keyEl.classList.add(typeof key);
+            keyEl.innerText = `${key}:`;
           }
-        }
 
-        // key
-        let keyEl = el.querySelector('.key');
-        keyEl.classList.remove('number', 'string');
-        keyEl.innerText = '';
-        let keyType = typeof key;
-        if (keyType !== 'undefined') {
-          keyEl.classList.add(keyType);
-          keyEl.innerText = `${key}:`
-        }
+          // value
+          let valueType = typeof value;
+          if (valueType !== "undefined") {
+            let valueEl = el.querySelector(".value");
+            valueEl.classList.add(valueType);
+            if (value === TOKEN_TYPES.LEFT_BRACKET) {
+              valueEl.innerText = "[";
+            } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
+              valueEl.innerText = "]";
+            } else {
+              valueEl.innerText = String(value);
+            }
+          }
 
-        // value
-        let valueEl = el.querySelector('.value');
-        valueEl.classList.remove('string', 'boolean', 'number', 'object', 'symbol');
-        valueEl.innerText = ''
-        let valueType = typeof value;
-        if (valueType !== 'undefined') {
-          valueEl.classList.add(valueType);
-          if (value === TOKEN_TYPES.LEFT_BRACKET) {
-            valueEl.innerText = '[';
-          } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
-            valueEl.innerText = ']';
+          // el.style.top = `${((i + start) * 28)}px`
+          virtualDom.appendChild(el);
+        }
+        canvas.appendChild(virtualDom);
+      }
+
+      function renderCanvas() {
+        let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28));
+
+        let children = canvas.children;
+        for (var i = 0; i <= linesShown; i++) {
+          let ind = pads.length - 1;
+          if (i + start > ind) continue;
+
+          const pad = pads[i + start];
+          const key = keys[i + start];
+          const value = values[i + start];
+
+          const el = children[i];
+
+          // Padding
+          const columns = el.querySelectorAll(".column");
+          if (columns.length <= pad) {
+            for (var j = 0; j < pad - columns.length; j++) {
+              const col = baseCol.cloneNode();
+              el.prepend(col);
+            }
           } else {
-            valueEl.innerText = String(value);
+            for (var j = 0; j < columns.length - pad; j++) {
+              columns[j].remove();
+            }
+          }
+
+          // key
+          let keyEl = el.querySelector(".key");
+          keyEl.classList.remove("number", "string");
+          keyEl.innerText = "";
+          let keyType = typeof key;
+          if (keyType !== "undefined") {
+            keyEl.classList.add(keyType);
+            keyEl.innerText = `${key}:`;
+          }
+
+          // value
+          let valueEl = el.querySelector(".value");
+          valueEl.classList.remove(
+            "string",
+            "boolean",
+            "number",
+            "object",
+            "symbol",
+          );
+          valueEl.innerText = "";
+          let valueType = typeof value;
+          if (valueType !== "undefined") {
+            valueEl.classList.add(valueType);
+            if (value === TOKEN_TYPES.LEFT_BRACKET) {
+              valueEl.innerText = "[";
+            } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
+              valueEl.innerText = "]";
+            } else {
+              valueEl.innerText = String(value);
+            }
           }
         }
       }
-    }
 
-    let scrollDy;
-    let scrollDir;
-    function handleInfiniteScroll(e) {
-      scrollDy = (e?.deltaY || 0)
-      scrollDir = scrollDy < 0 ? -1 : scrollDy > 0 ? 1 : 0;
-      scroll(scrollDir, 5);
-      renderCanvas();
-    };
-
-    function scroll(dir, lines) {
-      totalScrolled = Math.max(0, Math.min(totalScrolled + dir * lines, pads.length - 1 - linesShown + 2));
-    }
-
-    function handleKeyDown(e) {
-      let code = e.code;
-      if (code === "KeyJ" || code === "ArrowDown") {
-        scroll(1, 5);
+      let scrollDy;
+      let scrollDir;
+      function handleInfiniteScroll(e) {
+        scrollDy = e?.deltaY || 0;
+        scrollDir = scrollDy < 0 ? -1 : scrollDy > 0 ? 1 : 0;
+        scroll(scrollDir, 5);
         renderCanvas();
-      } else if (code === "KeyK" || code === "ArrowUp") {
-        scroll(-1, 5);
-        renderCanvas();
-      } else if (code === "PageDown") {
-        scroll(1, 100);
-        renderCanvas();
-      } else if (code === "PageUp") {
-        scroll(-1, 100);
-        renderCanvas();
-      } else if (code === "Home") {
-        totalScrolled = 0;
-        renderCanvas();
-      } else if (code === "End") {
-        totalScrolled = pads.length - 1 - linesShown + 2;
-        renderCanvas();
-      } else {
-        console.log(e);
       }
-    };
 
-    window.addEventListener("wheel", handleInfiniteScroll, false);
-    document.addEventListener("keydown", handleKeyDown, false);
-  </script>
-</body>
+      function scroll(dir, lines) {
+        totalScrolled = Math.max(
+          0,
+          Math.min(
+            totalScrolled + dir * lines,
+            pads.length - 1 - linesShown + 2,
+          ),
+        );
+      }
 
+      function handleKeyDown(e) {
+        let code = e.code;
+        if (code === "KeyJ" || code === "ArrowDown") {
+          scroll(1, 5);
+          renderCanvas();
+        } else if (code === "KeyK" || code === "ArrowUp") {
+          scroll(-1, 5);
+          renderCanvas();
+        } else if (code === "PageDown") {
+          scroll(1, 100);
+          renderCanvas();
+        } else if (code === "PageUp") {
+          scroll(-1, 100);
+          renderCanvas();
+        } else if (code === "Home") {
+          totalScrolled = 0;
+          renderCanvas();
+        } else if (code === "End") {
+          totalScrolled = pads.length - 1 - linesShown + 2;
+          renderCanvas();
+        } else {
+          console.log(e);
+        }
+      }
+
+      window.addEventListener("wheel", handleInfiniteScroll, false);
+      document.addEventListener("keydown", handleKeyDown, false);
+    </script>
+  </body>
 </html>
