@@ -125,6 +125,7 @@
     <div id="canvas"></div>
   </section>
   <script>
+    const CHUNK_SIZE = 1024 * 1024;
     const TOKEN_TYPES = {
       LEFT_BRACE: 0,
       RIGHT_BRACE: 1,
@@ -166,15 +167,15 @@
       ARRAY: 3,
     }
 
-    const menu = document.querySelector('#menu');
+    // elements
+    const menu = document.getElementById('menu');
 
-    const fileName = document.querySelector('#filename');
-    const fileSelect = document.querySelector('#fileSelect');
-    const fileInput = document.querySelector('#fileInput');
+    const fileName = document.getElementById('filename');
+    const fileSelect = document.getElementById('fileSelect');
+    const fileInput = document.getElementById('fileInput');
 
-    const viewer = document.querySelector('#viewer');
-    const canvas = document.querySelector('#canvas');
-
+    const viewer = document.getElementById('viewer');
+    const canvas = document.getElementById('canvas');
 
     let globalCounter;
     let virtualDom = null;
@@ -209,41 +210,36 @@
       let file = fileInput.files[0];
       fileName.innerText = file.name;
 
-      // 0.5mb chunk
-      let CHUNK_SIZE = Math.ceil(1 * 1024 * 1024);
-      let data;
+      // read + decode
+      let decoder = new TextDecoder('utf-8')
+      let buffer = new ArrayBuffer(CHUNK_SIZE);
+      let reader = file.stream().getReader({mode: "byob"});
+      let done = false;
       let input;
 
+      //lexer
+      let current = 0;
       let tokens = [];
-      let allDomPages = [];
-      let value = '';
       let state = LEXER_STATES.NORMAL;
       let char;
-      let parsed;
-      totalScrolled = 0;
-      globalCounter = 0;
-      virtualDom = document.createDocumentFragment();
+
+      // parser
       pads = [];
       keys = [];
       values = [];
       isBrackets = [];
-
-      let current = 0;
       let currentToken = 0;
       let json = null;
       let parserState = PARSER_STATES.NORMAL;
-      let pointers = [];
+      let pointers = [{key: null, state: PARSER_STATES.NULL, isKey: false}];
       let pointer;
       let token;
       let extraPad = 0;
-      let decoder = new TextDecoder('utf-8')
-      let stream = file.stream();
-      let reader = stream.getReader({mode: "byob"});
-      let buffer = new ArrayBuffer(CHUNK_SIZE);
-      let offset = 0;
-      let done = false;
 
-      pointers.push({key: null, state: PARSER_STATES.NULL, isKey: false});
+      // html
+      totalScrolled = 0;
+      globalCounter = 0;
+      virtualDom = document.createDocumentFragment();
 
       viewer.style.display = 'flex';
       menu.style.display = 'none';
@@ -254,7 +250,6 @@
           pointers = [];
           tokens = [];
           delete decoder;
-          delete stream;
           delete reader;
           delete buffer;
           return;
@@ -276,9 +271,7 @@
 
         // lexer
         current = 0;
-        parsed = true;
         let subStart;
-        let subEnd;
         console.time('lexer' + page);
         while (current < input.length) {
           char = input[current]
@@ -361,7 +354,7 @@
 
                 // character not recognized
                 default:
-                  parsed = false;
+                  throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -371,16 +364,14 @@
                   state = LEXER_STATES.STRING_ESCAPING
                 }
               } else {
-                subEnd = current;
-                tokens.push({type: TOKEN_TYPES.STRING, value: input.substring(subStart, subEnd)})
+                tokens.push({type: TOKEN_TYPES.STRING, value: input.substring(subStart, current)})
                 state = LEXER_STATES.NORMAL
               }
               break;
 
             case LEXER_STATES.NUMBER:
               if (char !== '.' && (char < '0' || char > '9')) {
-                subEnd = current;
-                tokens.push({type: TOKEN_TYPES.NUMBER, value: +input.substring(subStart, subEnd)})
+                tokens.push({type: TOKEN_TYPES.NUMBER, value: +input.substring(subStart, current)})
                 state = LEXER_STATES.NORMAL;
                 // TODO: fix hack
                 current--;
@@ -391,7 +382,7 @@
               if (char === 'r') {
                 state = LEXER_STATES.TRUE_R
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -399,7 +390,7 @@
               if (char === 'u') {
                 state = LEXER_STATES.TRUE_U
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -408,7 +399,7 @@
                 tokens.push({type: TOKEN_TYPES.TRUE})
                 state = LEXER_STATES.NORMAL
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -416,7 +407,7 @@
               if (char === 'a') {
                 state = LEXER_STATES.FALSE_A
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -424,7 +415,7 @@
               if (char === 'l') {
                 state = LEXER_STATES.FALSE_L
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -432,7 +423,7 @@
               if (char === 's') {
                 state = LEXER_STATES.FALSE_S
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -441,7 +432,7 @@
                 tokens.push({type: TOKEN_TYPES.FALSE})
                 state = LEXER_STATES.NORMAL
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -449,7 +440,7 @@
               if (char === 'u') {
                 state = LEXER_STATES.NULL_U
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -457,7 +448,7 @@
               if (char === 'l') {
                 state = LEXER_STATES.NULL_L1
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -466,7 +457,7 @@
                 tokens.push({type: TOKEN_TYPES.NULL})
                 state = LEXER_STATES.NORMAL
               } else {
-                parsed = false;
+                throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
               }
               break;
 
@@ -475,13 +466,7 @@
               break;
           }
 
-          if (parsed) {
-            current++;
-            continue
-          } else {
-            console.error(char, state, current, tokens);
-            throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
-          }
+          current++;
         }
         console.timeEnd('lexer' + page);
 
