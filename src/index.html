@@ -241,7 +241,6 @@
       viewer.style.display = 'flex';
       menu.style.display = 'none';
 
-      let page = 0;
       async function seek() {
         if (done) {
           pointers = [];
@@ -371,7 +370,7 @@
               if (char !== '.' && (char < '0' || char > '9')) {
                 tokens.push(+input.substring(subStart, current))
                 state = LEXER_STATES.NORMAL;
-                // TODO: fix hack
+                // after number end, go back 1 char
                 current--;
               }
               break;
@@ -617,7 +616,6 @@
           currentToken++;
         }
         performance.measure('parser', 'parser');
-        page++;
       }
 
       await seek();
@@ -626,7 +624,7 @@
       async function doWork() {
         if (!done) {
           await seek();
-          // await yieldToMain();
+          await yieldToMain();
           doWork();
         }
       }
