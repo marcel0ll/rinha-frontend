@@ -105,7 +105,7 @@
       font-weight: 400;
     }
 
-    .bracket {
+    .symbol {
       color: #F2CAB8;
       font-weight: 700;
     }
@@ -182,7 +182,6 @@
     let pads = [];
     let keys = [];
     let values = [];
-    let isBrackets = [];
     let totalScrolled;
     let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
 
@@ -197,11 +196,10 @@
       fileInput.click();
     }
 
-    function setLine(pad, key, value, isBracket) {
+    function setLine(pad, key, value) {
       pads.push(pad);
       keys.push(key);
       values.push(value);
-      isBrackets.push(isBracket);
     }
 
     fileInput.onchange = async (e) => {
@@ -227,7 +225,6 @@
       pads = [];
       keys = [];
       values = [];
-      isBrackets = [];
       let currentToken = 0;
       let json = null;
       let parserState = PARSER_STATES.NORMAL;
@@ -473,17 +470,17 @@
 
         // parser
         performance.mark('parser');
-        while (currentToken < tokens.length) {
+        let tokensLen = tokens.length;
+        while (currentToken < tokensLen) {
           let ind = pads.length - 1;
           token = tokens[currentToken];
-
           pointer = pointers[pointers.length - 1];
           parserState = pointer.state;
 
           if (token === TOKEN_TYPES.LEFT_BRACE) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -509,7 +506,7 @@
           } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             }
 
             if (parserState === PARSER_STATES.NULL) {
@@ -518,15 +515,14 @@
               pointer.key = 0;
               globalCounter += 2;
 
-              setLine(pointers.length - 1 + extraPad, undefined, '[', true);
+              setLine(pointers.length - 1 + extraPad, undefined, TOKEN_TYPES.LEFT_BRACKET);
               extraPad = 1
             } else {
               pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
               globalCounter += 1;
 
               ind = pads.length - 1;
-              values[ind] = '['
-              isBrackets[ind] = true
+              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
             }
           } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
             let isRoot = 0;
@@ -541,11 +537,11 @@
               isRoot = 1;
             }
 
-            setLine(pointers.length - 1 + extraPad - isRoot, undefined, ']', true);
+            setLine(pointers.length - 1 + extraPad - isRoot, undefined, TOKEN_TYPES.RIGHT_BRACKET);
           } else if (typeof token === 'string') {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             }
 
             if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
@@ -553,7 +549,7 @@
               pointer.isKey = false;
               globalCounter += 1;
 
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             } else {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
@@ -569,7 +565,7 @@
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             } else {
               pointer.isKey = true;
             }
@@ -580,7 +576,7 @@
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             } else {
               pointer.isKey = true;
             }
@@ -591,7 +587,7 @@
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             } else {
               pointer.isKey = true;
             }
@@ -602,7 +598,7 @@
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
               globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined, undefined);
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
             } else {
               pointer.isKey = true;
             }
@@ -667,7 +663,6 @@
         const pad = pads[i + start];
         const key = keys[i + start];
         const value = values[i + start];
-        const isBracket = isBrackets[i + start];
 
         const el = baseLineElement.cloneNode(true);
 
@@ -685,11 +680,17 @@
         }
 
         // value
-        let valueType = isBracket ? 'bracket' : typeof value;
+        let valueType = typeof value;
         if (valueType !== 'undefined') {
           let valueEl = el.querySelector('.value');
           valueEl.classList.add(valueType);
-          valueEl.innerText = String(value);
+          if (value === TOKEN_TYPES.LEFT_BRACKET) {
+            valueEl.innerText = '[';
+          } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
+            valueEl.innerText = ']';
+          } else {
+            valueEl.innerText = String(value);
+          }
         }
 
         // el.style.top = `${((i + start) * 28)}px`
@@ -710,7 +711,6 @@
         const pad = pads[i + start];
         const key = keys[i + start];
         const value = values[i + start];
-        const isBracket = isBrackets[i + start];
 
         const el = children[i];
 
@@ -739,12 +739,18 @@
 
         // value
         let valueEl = el.querySelector('.value');
-        valueEl.classList.remove('string', 'boolean', 'number', 'object', 'bracket');
+        valueEl.classList.remove('string', 'boolean', 'number', 'object', 'symbol');
         valueEl.innerText = ''
-        let valueType = isBracket ? 'bracket' : typeof value;
+        let valueType = typeof value;
         if (valueType !== 'undefined') {
           valueEl.classList.add(valueType);
-          valueEl.innerText = String(value);
+          if (value === TOKEN_TYPES.LEFT_BRACKET) {
+            valueEl.innerText = '[';
+          } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
+            valueEl.innerText = ']';
+          } else {
+            valueEl.innerText = String(value);
+          }
         }
       }
     }
