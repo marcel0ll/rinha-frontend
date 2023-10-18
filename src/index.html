@@ -125,7 +125,7 @@
     <div id="canvas"></div>
   </section>
   <script>
-    const CHUNK_SIZE = 1024 * 1024;
+    const CHUNK_SIZE = 50 * 1024 * 1024;
     const TOKEN_TYPES = {
       LEFT_BRACE: Symbol(),
       RIGHT_BRACE: Symbol(),
@@ -141,30 +141,30 @@
     }
 
     const LEXER_STATES = {
-      NORMAL: 0,
-      NUMBER: 1,
-      STRING: 2,
-      STRING_ESCAPING: 3,
-      TRUE_T: 4,
-      TRUE_R: 5,
-      TRUE_U: 6,
-      TRUE_E: 7,
-      FALSE_F: 8,
-      FALSE_A: 9,
-      FALSE_L: 10,
-      FALSE_S: 11,
-      FALSE_E: 12,
-      NULL_N: 13,
-      NULL_U: 14,
-      NULL_L1: 15,
-      NULL_L2: 16,
+      NORMAL: Symbol(),
+      NUMBER: Symbol(),
+      STRING: Symbol(),
+      STRING_ESCAPING: Symbol(),
+      TRUE_T: Symbol(),
+      TRUE_R: Symbol(),
+      TRUE_U: Symbol(),
+      // TRUE_E: Symbol(),
+      FALSE_F: Symbol(),
+      FALSE_A: Symbol(),
+      FALSE_L: Symbol(),
+      FALSE_S: Symbol(),
+      // FALSE_E: Symbol(),
+      NULL_N: Symbol(),
+      NULL_U: Symbol(),
+      NULL_L1: Symbol(),
+      // NULL_L2: Symbol(),
     }
 
     const PARSER_STATES = {
-      NULL: 0,
-      NORMAL: 1,
-      OBJECT: 2,
-      ARRAY: 3,
+      NULL: Symbol(),
+      NORMAL: Symbol(),
+      OBJECT: Symbol(),
+      ARRAY: Symbol(),
     }
 
     // elements
@@ -206,7 +206,7 @@
 
     fileInput.onchange = async (e) => {
       // console.log('changed', fileInput.files[0]);
-      console.time('fileRead');
+      performance.mark('fileRead')
       let file = fileInput.files[0];
       fileName.innerText = file.name;
 
@@ -254,26 +254,27 @@
           delete buffer;
           return;
         }
-        console.time('read' + page)
+        performance.mark('read')
         const result = await reader.read(new Uint8Array(buffer));
 
         buffer = result.value.buffer;
         if (result.done) {
           done = true;
-          console.timeEnd('fileRead');
+          performance.measure('fileRead', 'fileRead')
           return;
         }
 
-        console.timeEnd('read' + page)
-        console.time('decode' + page)
+        performance.measure('read', 'read')
+        performance.mark('decode')
         input = decoder.decode(result.value);
-        console.timeEnd('decode' + page)
+        performance.measure('decode', 'decode')
 
         // lexer
         current = 0;
         let subStart;
-        console.time('lexer' + page);
-        while (current < input.length) {
+        performance.mark('lexer');
+        let inputLen = input.length;
+        while (current < inputLen) {
           char = input[current]
 
           switch (state) {
@@ -294,8 +295,6 @@
                   break;
 
                 // number
-                case '-':
-                case '.':
                 case '0':
                 case '1':
                 case '2':
@@ -306,6 +305,8 @@
                 case '7':
                 case '8':
                 case '9':
+                case '.':
+                case '-':
                   state = LEXER_STATES.NUMBER;
                   subStart = current;
                   break;
@@ -468,10 +469,10 @@
 
           current++;
         }
-        console.timeEnd('lexer' + page);
+        performance.measure('lexer', 'lexer');
 
         // parser
-        console.time('parser' + page);
+        performance.mark('parser');
         while (currentToken < tokens.length) {
           let ind = pads.length - 1;
           token = tokens[currentToken];
@@ -615,7 +616,7 @@
 
           currentToken++;
         }
-        console.timeEnd('parser' + page);
+        performance.measure('parser', 'parser');
         page++;
       }
 
@@ -625,7 +626,7 @@
       async function doWork() {
         if (!done) {
           await seek();
-          await yieldToMain();
+          // await yieldToMain();
           doWork();
         }
       }
