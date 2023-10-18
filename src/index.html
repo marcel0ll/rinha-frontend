@@ -277,6 +277,8 @@
         // lexer
         current = 0;
         parsed = true;
+        let subStart;
+        let subEnd;
         console.time('lexer' + page);
         while (current < input.length) {
           char = input[current]
@@ -295,6 +297,7 @@
                 // string start
                 case '"':
                   state = LEXER_STATES.STRING;
+                  subStart = current + 1;
                   break;
 
                 case '{':
@@ -335,25 +338,25 @@
                 case '8':
                 case '9':
                   state = LEXER_STATES.NUMBER;
-                  value += char;
+                  subStart = current;
                   break;
 
                 // true
                 case 't':
                   state = LEXER_STATES.TRUE_T;
-                  value += char;
+                  subStart = current;
                   break;
 
                 // false
                 case 'f':
                   state = LEXER_STATES.FALSE_F;
-                  value += char;
+                  subStart = current;
                   break;
 
                 // null
                 case 'n':
                   state = LEXER_STATES.NULL_N;
-                  value += char;
+                  subStart = current;
                   break;
 
                 // character not recognized
@@ -364,23 +367,20 @@
 
             case LEXER_STATES.STRING:
               if (char !== '"') {
-                value += char
                 if (char === '\\') {
                   state = LEXER_STATES.STRING_ESCAPING
                 }
               } else {
-                tokens.push({type: TOKEN_TYPES.STRING, value: value})
-                value = ''
+                subEnd = current;
+                tokens.push({type: TOKEN_TYPES.STRING, value: input.substring(subStart, subEnd)})
                 state = LEXER_STATES.NORMAL
               }
               break;
 
             case LEXER_STATES.NUMBER:
-              if (char === '.' || (char >= '0' && char <= '9')) {
-                value += char
-              } else {
-                tokens.push({type: TOKEN_TYPES.NUMBER, value: value})
-                value = ''
+              if (char !== '.' && (char < '0' || char > '9')) {
+                subEnd = current;
+                tokens.push({type: TOKEN_TYPES.NUMBER, value: +input.substring(subStart, subEnd)})
                 state = LEXER_STATES.NORMAL;
                 // TODO: fix hack
                 current--;
@@ -389,7 +389,6 @@
 
             case LEXER_STATES.TRUE_T:
               if (char === 'r') {
-                value += char;
                 state = LEXER_STATES.TRUE_R
               } else {
                 parsed = false;
@@ -398,7 +397,6 @@
 
             case LEXER_STATES.TRUE_R:
               if (char === 'u') {
-                value += char;
                 state = LEXER_STATES.TRUE_U
               } else {
                 parsed = false;
@@ -407,9 +405,7 @@
 
             case LEXER_STATES.TRUE_U:
               if (char === 'e') {
-                value += char;
                 tokens.push({type: TOKEN_TYPES.TRUE})
-                value = ''
                 state = LEXER_STATES.NORMAL
               } else {
                 parsed = false;
@@ -418,7 +414,6 @@
 
             case LEXER_STATES.FALSE_F:
               if (char === 'a') {
-                value += char;
                 state = LEXER_STATES.FALSE_A
               } else {
                 parsed = false;
@@ -427,7 +422,6 @@
 
             case LEXER_STATES.FALSE_A:
               if (char === 'l') {
-                value += char;
                 state = LEXER_STATES.FALSE_L
               } else {
                 parsed = false;
@@ -436,7 +430,6 @@
 
             case LEXER_STATES.FALSE_L:
               if (char === 's') {
-                value += char;
                 state = LEXER_STATES.FALSE_S
               } else {
                 parsed = false;
@@ -445,9 +438,7 @@
 
             case LEXER_STATES.FALSE_S:
               if (char === 'e') {
-                value += char;
                 tokens.push({type: TOKEN_TYPES.FALSE})
-                value = ''
                 state = LEXER_STATES.NORMAL
               } else {
                 parsed = false;
@@ -456,7 +447,6 @@
 
             case LEXER_STATES.NULL_N:
               if (char === 'u') {
-                value += char;
                 state = LEXER_STATES.NULL_U
               } else {
                 parsed = false;
@@ -465,7 +455,6 @@
 
             case LEXER_STATES.NULL_U:
               if (char === 'l') {
-                value += char;
                 state = LEXER_STATES.NULL_L1
               } else {
                 parsed = false;
@@ -474,9 +463,7 @@
 
             case LEXER_STATES.NULL_L1:
               if (char === 'l') {
-                value += char;
                 tokens.push({type: TOKEN_TYPES.NULL})
-                value = ''
                 state = LEXER_STATES.NORMAL
               } else {
                 parsed = false;
@@ -484,7 +471,6 @@
               break;
 
             case LEXER_STATES.STRING_ESCAPING:
-              value += char
               state = LEXER_STATES.STRING
               break;
           }
@@ -493,7 +479,7 @@
             current++;
             continue
           } else {
-            console.error(char, state, value, current, tokens);
+            console.error(char, state, current, tokens);
             throw new TypeError('I dont know what this character is: ' + char + ' c:' + current)
           }
         }
@@ -603,7 +589,7 @@
             }
 
             ind = pads.length - 1;
-            values[ind] = +token.value
+            values[ind] = token.value
           } else if (token.type === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
