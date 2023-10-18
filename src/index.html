@@ -477,68 +477,7 @@
           pointer = pointers[pointers.length - 1];
           parserState = pointer.state;
 
-          if (token === TOKEN_TYPES.LEFT_BRACE) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            }
-
-            if (parserState === PARSER_STATES.NULL) {
-              pointer.state = PARSER_STATES.OBJECT;
-              pointer.isKey = true;
-              pointer.key = null;
-            } else {
-              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
-            }
-          } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
-            if (pointers.length > 1) {
-              pointers.pop();
-              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-                pointers[pointers.length - 1].key += 1;
-              } else {
-                pointers[pointers.length - 1].isKey = true;
-              }
-            }
-          } else if (token === TOKEN_TYPES.COMMA) {
-            // DO NOTHING
-          } else if (token === TOKEN_TYPES.COLON) {
-            // DO NOTHING
-          } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
-            if (parserState === PARSER_STATES.ARRAY) {
-              globalCounter += 1;
-              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-            }
-
-            if (parserState === PARSER_STATES.NULL) {
-              pointer.state = PARSER_STATES.ARRAY;
-              pointer.isKey = false;
-              pointer.key = 0;
-              globalCounter += 2;
-
-              setLine(pointers.length - 1 + extraPad, undefined, TOKEN_TYPES.LEFT_BRACKET);
-              extraPad = 1
-            } else {
-              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
-              globalCounter += 1;
-
-              ind = pads.length - 1;
-              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
-            }
-          } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
-            let isRoot = 0;
-            if (pointers.length > 1) {
-              pointers.pop();
-              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
-                pointers[pointers.length - 1].key += 1;
-              } else {
-                pointers[pointers.length - 1].isKey = true;
-              }
-            } else {
-              isRoot = 1;
-            }
-
-            setLine(pointers.length - 1 + extraPad - isRoot, undefined, TOKEN_TYPES.RIGHT_BRACKET);
-          } else if (typeof token === 'string') {
+          if (typeof token === 'string') {
             if (parserState === PARSER_STATES.ARRAY) {
               globalCounter += 1;
               setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
@@ -572,6 +511,71 @@
 
             ind = pads.length - 1;
             values[ind] = token
+
+          } else if (token === TOKEN_TYPES.COLON) {
+            // DO NOTHING
+          } else if (token === TOKEN_TYPES.COMMA) {
+            // DO NOTHING
+          } else if (token === TOKEN_TYPES.LEFT_BRACE) {
+            if (parserState === PARSER_STATES.ARRAY) {
+              globalCounter += 1;
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
+            } else if (parserState === PARSER_STATES.NULL) {
+              pointer.state = PARSER_STATES.OBJECT;
+              pointer.isKey = true;
+              pointer.key = null;
+            } else {
+              pointers.push({key: null, state: PARSER_STATES.OBJECT, isKey: true});
+            }
+          } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
+            if (pointers.length > 1) {
+              pointers.pop();
+              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+                pointers[pointers.length - 1].key += 1;
+              } else {
+                pointers[pointers.length - 1].isKey = true;
+              }
+            }
+          } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
+            if (parserState === PARSER_STATES.ARRAY) {
+              globalCounter += 1;
+              setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+
+              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
+              globalCounter += 1;
+
+              ind = pads.length - 1;
+              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
+            } else if (parserState === PARSER_STATES.NULL) {
+              pointer.state = PARSER_STATES.ARRAY;
+              pointer.isKey = false;
+              pointer.key = 0;
+              globalCounter += 2;
+
+              setLine(pointers.length - 1 + extraPad, undefined, TOKEN_TYPES.LEFT_BRACKET);
+              extraPad = 1
+            } else {
+              pointers.push({key: 0, state: PARSER_STATES.ARRAY, isKey: false});
+              globalCounter += 1;
+
+              ind = pads.length - 1;
+              values[ind] = TOKEN_TYPES.LEFT_BRACKET;
+            }
+          } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
+            let isRoot = 0;
+            if (pointers.length > 1) {
+              pointers.pop();
+              if (pointers[pointers.length - 1].state === PARSER_STATES.ARRAY) {
+                pointers[pointers.length - 1].key += 1;
+              } else {
+                pointers[pointers.length - 1].isKey = true;
+              }
+            } else {
+              isRoot = 1;
+            }
+
+            setLine(pointers.length - 1 + extraPad - isRoot, undefined, TOKEN_TYPES.RIGHT_BRACKET);
           } else if (token === TOKEN_TYPES.TRUE) {
             if (parserState === PARSER_STATES.ARRAY) {
               pointer.key++;
