@@ -46,12 +46,16 @@
         pointer-events: none;
       }
 
+      #title {
+        display: flex; 
+        height: 74px; 
+        padding-top: 24px; 
+        padding-bottom: 10px;
+      }
+
       #viewer h1 {
         font-size: 32px;
-        padding-top: 24px;
-        padding-bottom: 10px;
         margin: 0;
-        height: 74px;
       }
 
       #viewer {
@@ -137,7 +141,10 @@
       </p>
     </section>
     <section id="viewer" style="display: none">
-      <h1 id="filename"></h1>
+      <div id="title" >
+        <button id="back">Back</button>
+        <h1 id="filename"></h1>
+      </div>
       <div id="canvas"></div>
     </section>
     <script>
@@ -183,12 +190,12 @@
 
       const PARSER_STATES = {
         NULL: Symbol(),
-        NORMAL: Symbol(),
         OBJECT: Symbol(),
         ARRAY: Symbol(),
       };
 
       // elements
+      const back = document.getElementById("back");
       const menu = document.getElementById("menu");
 
       const fileName = document.getElementById("filename");
@@ -267,8 +274,13 @@
         values.push(value);
       }
 
+      back.onclick = () => {
+        menu.style.display = "block";
+        viewer.style.display = "none";
+        canvas.innerHTML = '';
+      }
+
       fileInput.onchange = async (e) => {
-        // console.log('changed', fileInput.files[0]);
         performance.mark("fileRead");
 
         file = fileInput.files[0];
@@ -288,8 +300,8 @@
 
         tokensToParse = 0;
 
-        parserState = PARSER_STATES.NORMAL;
-        pointers = [{ key: null, state: PARSER_STATES.NULL, isKey: false }];
+        parserState;
+        pointers = [{ key: 0, state: PARSER_STATES.NULL, isKey: false }];
         pointer = pointers[0];
         // we start a 0 for padding purposes
 
@@ -317,7 +329,6 @@
             done = true;
             performance.measure("fileRead", "fileRead");
 
-            // console.log('sizeToLines', file.size / lineCounter)
             return;
           }
 
@@ -334,9 +345,9 @@
           valueIndex = 0;
           consumedValueIndex = 0;
           let inputLen = input.length;
-          // console.log('scanning', inputLen);
+
           while (i < inputLen) {
-            char = input[i];
+            char = input.charAt(i);
 
             switch (lexerState) {
               case LEXER_STATES.NORMAL:
@@ -558,22 +569,14 @@
 
           // parser
           performance.mark("parser");
-          // console.log('parsing ', tokensToParse);
           i = 0;
           while (i < tokensToParse) {
-            let ind = pads.length - 1;
             token = tokens[i];
             parserState = pointer.state;
 
             switch (token) {
               case TOKEN_TYPES.STRING:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                }
-
                 if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
-                  console.log(tokenValues[consumedValueIndex])
                   pointer.key = tokenValues[consumedValueIndex++];
                   pointer.isKey = false;
                   lineCounter += 1;
@@ -586,7 +589,6 @@
                   pointer.isKey = true;
 
                   ind = pads.length - 1;
-                  console.log(tokenValues[consumedValueIndex])
                   values[ind] = tokenValues[consumedValueIndex++];
                 }
                 break;
@@ -601,7 +603,6 @@
                 }
 
                 ind = pads.length - 1;
-                  console.log(tokenValues[consumedValueIndex])
                 values[ind] = +tokenValues[consumedValueIndex++];
                 break;
 
@@ -614,7 +615,7 @@
                   lineCounter += 1;
                   setLine(pointersLen + extraPad, pointer.key, undefined);
                   let newPointer = {
-                    key: null,
+                    key: 0,
                     state: PARSER_STATES.OBJECT,
                     isKey: true,
                   };
@@ -627,7 +628,7 @@
                   pointer.key = 0;
                 } else {
                   let newPointer = {
-                    key: null,
+                    key: 0,
                     state: PARSER_STATES.OBJECT,
                     isKey: true,
                   };
@@ -666,8 +667,7 @@
 
                   lineCounter += 1;
 
-                  ind = pads.length - 1;
-                  values[ind] = TOKEN_TYPES.LEFT_BRACKET;
+                  values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
                 } else if (parserState === PARSER_STATES.NULL) {
                   pointer.state = PARSER_STATES.ARRAY;
                   pointer.isKey = false;
@@ -691,8 +691,7 @@
                   pointer = newPointer;
                   lineCounter += 1;
 
-                  ind = pads.length - 1;
-                  values[ind] = TOKEN_TYPES.LEFT_BRACKET;
+                  values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
                 }
                 break;
 
@@ -728,8 +727,7 @@
                   pointer.isKey = true;
                 }
 
-                ind = pads.length - 1;
-                values[ind] = true;
+                values[pads.length-1] = true;
                 break;
 
               case TOKEN_TYPES.FALSE:
@@ -741,8 +739,7 @@
                   pointer.isKey = true;
                 }
 
-                ind = pads.length - 1;
-                values[ind] = false;
+                values[pads.length-1] = false;
 
                 break;
 
@@ -755,8 +752,7 @@
                   pointer.isKey = true;
                 }
 
-                ind = pads.length - 1;
-                values[ind] = null;
+                values[pads.length-1] = null;
                 break;
 
               default:
@@ -768,12 +764,10 @@
           }
 
           performance.measure("parser", "parser");
-          // console.log("lines   ", lineCounter - oldCounter)
           oldCounter = lineCounter;
 
           // set height for virtual scroller
           th = lineCounter * rh + 74; // virtual height
-          // th = 10_000_000_000
 
           if (th < 1e7) {
             // just one page
@@ -788,7 +782,7 @@
             cj = (th - h) / (n - 1);
           }
 
-          vp = viewer.clientHeight; // viewer height
+          vp = viewer.clientHeight;
           canvas.style.height = h;
         }
 
