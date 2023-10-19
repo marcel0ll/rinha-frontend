@@ -141,7 +141,8 @@
       <div id="canvas"></div>
     </section>
     <script>
-      const CHUNK_SIZE = 50 * 1024 * 1024;
+      // TODO: check why this number is the max DataView buffer size
+      const CHUNK_SIZE = 0x200000;
       const TOKEN_TYPES = {
         LEFT_BRACE: Symbol(),
         RIGHT_BRACE: Symbol(),
@@ -747,10 +748,15 @@
         await seek();
         renderFreshCanvas();
 
+        let deadline = performance.now() + 50;
+
         async function doWork() {
           if (!done) {
             await seek();
-            await yieldToMain();
+            if (navigator?.scheduling?.isInputPending() || performance.now() >= deadline) {
+              await yieldToMain();
+              deadline = performance.now() + 50;
+            }
             doWork();
           }
         }
