@@ -573,6 +573,7 @@
                 }
 
                 if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
+                  console.log(tokenValues[consumedValueIndex])
                   pointer.key = tokenValues[consumedValueIndex++];
                   pointer.isKey = false;
                   lineCounter += 1;
@@ -581,12 +582,11 @@
                 } else {
                   if (parserState === PARSER_STATES.ARRAY) {
                     pointer.key++;
-                  } else {
-                    pointer.isKey = true;
-                  }
+                  } 
                   pointer.isKey = true;
 
                   ind = pads.length - 1;
+                  console.log(tokenValues[consumedValueIndex])
                   values[ind] = tokenValues[consumedValueIndex++];
                 }
                 break;
@@ -601,7 +601,8 @@
                 }
 
                 ind = pads.length - 1;
-                values[ind] = tokenValues[consumedValueIndex++];
+                  console.log(tokenValues[consumedValueIndex])
+                values[ind] = +tokenValues[consumedValueIndex++];
                 break;
 
               case TOKEN_TYPES.COLON:
@@ -623,7 +624,7 @@
                 } else if (parserState === PARSER_STATES.NULL) {
                   pointer.state = PARSER_STATES.OBJECT;
                   pointer.isKey = true;
-                  pointer.key = null;
+                  pointer.key = 0;
                 } else {
                   let newPointer = {
                     key: null,
@@ -640,7 +641,7 @@
                 if (pointersLen > 0) {
                   pointers.pop();
                   pointersLen--;
-                  pointer = pointers.slice(-1);
+                  pointer = pointers[pointersLen];
                   if (pointer.state === PARSER_STATES.ARRAY) {
                     pointer.key += 1;
                   } else {
@@ -700,7 +701,7 @@
                 if (pointersLen > 0) {
                   pointers.pop();
                   pointersLen--;
-                  pointer = pointers.slice(-1);
+                  pointer = pointers[pointersLen];
                   if (pointer.state === PARSER_STATES.ARRAY) {
                     pointer.key += 1;
                   } else {
