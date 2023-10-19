@@ -826,6 +826,8 @@
               valueEl.innerText = "[";
             } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
               valueEl.innerText = "]";
+            } else if (valueType === 'string') {
+              valueEl.innerText = `"${String(value)}"`;
             } else {
               valueEl.innerText = String(value);
             }
