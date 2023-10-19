@@ -211,9 +211,9 @@
       // Large virtual scroller
       var th = 0; // total theorical height (len(rows) * rowHeight)
       var h = canvas.clientHeight; // virtual scroller scroll height
-      var ph = h / 100; // page height
-      var n = Math.ceil(th / ph); // number of pages
-      var vp = viewer.clientHeight; // viewer height
+      var ph = h / 100; // virtual page height
+      var n = Math.ceil(th / ph); // number of virtual pages
+      var vp = viewer.clientHeight; // actual DOM viewer height
       var cj = (th - h) / (n - 1); // "jumpiness" coefficient
 
       var rh = 28; // row height
@@ -231,19 +231,21 @@
       fileInput.onchange = async (e) => {
         // console.log('changed', fileInput.files[0]);
         performance.mark("fileRead");
+
         let file = fileInput.files[0];
         fileName.innerText = file.name;
+        let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
         // read + decode
         let decoder = new TextDecoder("utf-8");
-        let buffer = new ArrayBuffer(CHUNK_SIZE);
-        let reader = file.stream().getReader({ mode: "byob" });
         let done = false;
+        let readPages = 0;
         let input;
 
         //lexer
         let current = 0;
-        let tokens = [];
+        // This size for tokens array is an heuristic that for every 10 chars there will be ~1 token
+        let tokens = new Array(Math.ceil(CHUNK_SIZE / 5));
         let state = LEXER_STATES.NORMAL;
         let char;
 
@@ -251,11 +253,13 @@
         pads = [];
         keys = [];
         values = [];
-        let currentToken = 0;
+        let tokensToParse = 0;
         let json = null;
         let parserState = PARSER_STATES.NORMAL;
         let pointers = [{ key: null, state: PARSER_STATES.NULL, isKey: false }];
-        let pointer;
+        let pointer = pointers[0];
+        // we count 1 below for padding purposes
+        let pointersLen = 0;
         let token;
         let extraPad = 0;
 
@@ -267,19 +271,13 @@
         menu.style.display = "none";
 
         async function seek() {
-          if (done) {
-            pointers = [];
-            tokens = [];
-            delete decoder;
-            delete reader;
-            delete buffer;
-            return;
-          }
           performance.mark("read");
-          const result = await reader.read(new Uint8Array(buffer));
+          const result = await file
+            .slice(readPages * CHUNK_SIZE, (readPages + 1) * CHUNK_SIZE)
+            .arrayBuffer();
+          readPages++;
 
-          buffer = result.value.buffer;
-          if (result.done) {
+          if (readPages > filePageLength) {
             done = true;
             performance.measure("fileRead", "fileRead");
             return;
@@ -287,7 +285,7 @@
 
           performance.measure("read", "read");
           performance.mark("decode");
-          input = decoder.decode(result.value);
+          input = decoder.decode(result);
           performance.measure("decode", "decode");
 
           // lexer
@@ -295,8 +293,10 @@
           let subStart;
           performance.mark("lexer");
           let inputLen = input.length;
+          tokensToParse = 0;
+          // console.log('scanning', inputLen);
           while (current < inputLen) {
-            char = input[current];
+            char = input.charAt(current);
 
             switch (state) {
               case LEXER_STATES.NORMAL:
@@ -333,27 +333,27 @@
                     break;
 
                   case ":":
-                    tokens.push(TOKEN_TYPES.COLON);
+                    tokens[tokensToParse++] = TOKEN_TYPES.COLON;
                     break;
 
                   case ",":
-                    tokens.push(TOKEN_TYPES.COMMA);
+                    tokens[tokensToParse++] = TOKEN_TYPES.COMMA;
                     break;
 
                   case "{":
-                    tokens.push(TOKEN_TYPES.LEFT_BRACE);
+                    tokens[tokensToParse++] = TOKEN_TYPES.LEFT_BRACE;
                     break;
 
                   case "}":
-                    tokens.push(TOKEN_TYPES.RIGHT_BRACE);
+                    tokens[tokensToParse++] = TOKEN_TYPES.RIGHT_BRACE;
                     break;
 
                   case "[":
-                    tokens.push(TOKEN_TYPES.LEFT_BRACKET);
+                    tokens[tokensToParse++] = TOKEN_TYPES.LEFT_BRACKET;
                     break;
 
                   case "]":
-                    tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
+                    tokens[tokensToParse++] = TOKEN_TYPES.RIGHT_BRACKET;
                     break;
 
                   // true
@@ -391,14 +391,14 @@
                     state = LEXER_STATES.STRING_ESCAPING;
                   }
                 } else {
-                  tokens.push(input.substring(subStart, current));
+                  tokens[tokensToParse++] = input.substring(subStart, current);
                   state = LEXER_STATES.NORMAL;
                 }
                 break;
 
               case LEXER_STATES.NUMBER:
                 if (char !== "." && (char < "0" || char > "9")) {
-                  tokens.push(+input.substring(subStart, current));
+                  tokens[tokensToParse++] = +input.substring(subStart, current);
                   state = LEXER_STATES.NORMAL;
                   // after number end, go back 1 char
                   current--;
@@ -433,7 +433,7 @@
 
               case LEXER_STATES.TRUE_U:
                 if (char === "e") {
-                  tokens.push(TOKEN_TYPES.TRUE);
+                  tokens[tokensToParse++] = TOKEN_TYPES.TRUE;
                   state = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -486,7 +486,7 @@
 
               case LEXER_STATES.FALSE_S:
                 if (char === "e") {
-                  tokens.push(TOKEN_TYPES.FALSE);
+                  tokens[tokensToParse++] = TOKEN_TYPES.FALSE;
                   state = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -526,7 +526,7 @@
 
               case LEXER_STATES.NULL_L1:
                 if (char === "l") {
-                  tokens.push(TOKEN_TYPES.NULL);
+                  tokens[tokensToParse++] = TOKEN_TYPES.NULL;
                   state = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -549,17 +549,17 @@
 
           // parser
           performance.mark("parser");
-          let tokensLen = tokens.length;
-          while (currentToken < tokensLen) {
+          // console.log('parsing ', tokensToParse);
+          current = 0;
+          while (current < tokensToParse) {
             let ind = pads.length - 1;
-            token = tokens[currentToken];
-            pointer = pointers[pointers.length - 1];
+            token = tokens[current];
             parserState = pointer.state;
 
             if (typeof token === "string") {
               if (parserState === PARSER_STATES.ARRAY) {
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               }
 
               if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
@@ -567,7 +567,7 @@
                 pointer.isKey = false;
                 globalCounter += 1;
 
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 if (parserState === PARSER_STATES.ARRAY) {
                   pointer.key++;
@@ -583,7 +583,7 @@
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
@@ -597,44 +597,54 @@
             } else if (token === TOKEN_TYPES.LEFT_BRACE) {
               if (parserState === PARSER_STATES.ARRAY) {
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
-                pointers.push({
+                setLine(pointersLen + extraPad, pointer.key, undefined);
+                let newPointer = {
                   key: null,
                   state: PARSER_STATES.OBJECT,
                   isKey: true,
-                });
+                };
+                pointers.push(newPointer);
+                pointersLen++;
+                pointer = newPointer;
               } else if (parserState === PARSER_STATES.NULL) {
                 pointer.state = PARSER_STATES.OBJECT;
                 pointer.isKey = true;
                 pointer.key = null;
               } else {
-                pointers.push({
+                let newPointer = {
                   key: null,
                   state: PARSER_STATES.OBJECT,
                   isKey: true,
-                });
+                };
+                pointers.push(newPointer);
+                pointersLen++;
+                pointer = newPointer;
               }
             } else if (token === TOKEN_TYPES.RIGHT_BRACE) {
-              if (pointers.length > 1) {
+              if (pointersLen > 0) {
                 pointers.pop();
-                if (
-                  pointers[pointers.length - 1].state === PARSER_STATES.ARRAY
-                ) {
-                  pointers[pointers.length - 1].key += 1;
+                pointersLen--;
+                pointer = pointers.slice(-1);
+                if (pointer.state === PARSER_STATES.ARRAY) {
+                  pointer.key += 1;
                 } else {
-                  pointers[pointers.length - 1].isKey = true;
+                  pointer.isKey = true;
                 }
               }
             } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
               if (parserState === PARSER_STATES.ARRAY) {
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
 
-                pointers.push({
+                let newPointer = {
                   key: 0,
                   state: PARSER_STATES.ARRAY,
                   isKey: false,
-                });
+                };
+                pointers.push(newPointer);
+                pointersLen++;
+                pointer = newPointer;
+
                 globalCounter += 1;
 
                 ind = pads.length - 1;
@@ -646,17 +656,20 @@
                 globalCounter += 2;
 
                 setLine(
-                  pointers.length - 1 + extraPad,
+                  pointersLen + extraPad,
                   undefined,
                   TOKEN_TYPES.LEFT_BRACKET,
                 );
                 extraPad = 1;
               } else {
-                pointers.push({
+                let newPointer = {
                   key: 0,
                   state: PARSER_STATES.ARRAY,
                   isKey: false,
-                });
+                };
+                pointers.push(newPointer);
+                pointersLen++;
+                pointer = newPointer;
                 globalCounter += 1;
 
                 ind = pads.length - 1;
@@ -664,21 +677,21 @@
               }
             } else if (token === TOKEN_TYPES.RIGHT_BRACKET) {
               let isRoot = 0;
-              if (pointers.length > 1) {
+              if (pointersLen > 0) {
                 pointers.pop();
-                if (
-                  pointers[pointers.length - 1].state === PARSER_STATES.ARRAY
-                ) {
-                  pointers[pointers.length - 1].key += 1;
+                pointersLen--;
+                pointer = pointers.slice(-1);
+                if (pointer.state === PARSER_STATES.ARRAY) {
+                  pointer.key += 1;
                 } else {
-                  pointers[pointers.length - 1].isKey = true;
+                  pointer.isKey = true;
                 }
               } else {
                 isRoot = 1;
               }
 
               setLine(
-                pointers.length - 1 + extraPad - isRoot,
+                pointersLen + extraPad - isRoot,
                 undefined,
                 TOKEN_TYPES.RIGHT_BRACKET,
               );
@@ -686,7 +699,7 @@
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
@@ -697,7 +710,7 @@
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
@@ -708,7 +721,7 @@
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
                 globalCounter += 1;
-                setLine(pointers.length - 1 + extraPad, pointer.key, undefined);
+                setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
@@ -716,11 +729,11 @@
               ind = pads.length - 1;
               values[ind] = null;
             } else {
-              console.error(parserState, currentToken, token, tokens);
+              console.error(parserState, current, token, tokens);
               throw new TypeError(token);
             }
 
-            currentToken++;
+            current++;
           }
           performance.measure("parser", "parser");
 
@@ -742,7 +755,7 @@
           }
 
           vp = viewer.clientHeight; // viewer height
-          canvas.style.height = h
+          canvas.style.height = h;
         }
 
         await seek();
@@ -753,7 +766,10 @@
         async function doWork() {
           if (!done) {
             await seek();
-            if (navigator?.scheduling?.isInputPending() || performance.now() >= deadline) {
+            if (
+              navigator?.scheduling?.isInputPending() ||
+              performance.now() >= deadline
+            ) {
               await yieldToMain();
               deadline = performance.now() + 50;
             }
@@ -832,7 +848,7 @@
               valueEl.innerText = "[";
             } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
               valueEl.innerText = "]";
-            } else if (valueType === 'string') {
+            } else if (valueType === "string") {
               valueEl.innerText = `"${String(value)}"`;
             } else {
               valueEl.innerText = String(value);
