@@ -148,11 +148,6 @@
       <div id="canvas"></div>
     </section>
     <script>
-      // TODO: Allocate memory in large pages for pads, keys, values, maybe tokens
-      // TODO: Identify why minor GC is running often (it is due to large memory usage, probably)
-      // TODO: Benchmark file.slice vs BYOBReader + ArrayBuffer
-
-      // TODO: check why this number is the max DataView buffer size
       const CHUNK_SIZE = 0x200000;
       const TOKEN_TYPES = {
         LEFT_BRACE: Symbol(),
@@ -220,6 +215,9 @@
       let file;
       let filePageLength;
 
+      let buffer = new ArrayBuffer(CHUNK_SIZE);
+      let reader;
+
       // read + decode
       let decoder = new TextDecoder("utf-8");
       let done;
@@ -284,6 +282,7 @@
         performance.mark("fileRead");
 
         file = fileInput.files[0];
+        reader = file.stream().getReader({ mode: "byob" });
         fileName.innerText = file.name;
         filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
@@ -320,21 +319,18 @@
         async function seek() {
           performance.mark("read");
 
-          const result = await file
-            .slice(readPages * CHUNK_SIZE, (readPages + 1) * CHUNK_SIZE)
-            .arrayBuffer();
-          readPages++;
+          const result = await reader.read(new Uint8Array(buffer));
 
-          if (readPages > filePageLength) {
+          buffer = result.value.buffer;
+          if (result.done) {
             done = true;
             performance.measure("fileRead", "fileRead");
-
             return;
           }
 
           performance.measure("read", "read");
           performance.mark("decode");
-          input = decoder.decode(result);
+          input = decoder.decode(result.value);
           performance.measure("decode", "decode");
 
           // lexer
