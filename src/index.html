@@ -16,7 +16,6 @@
         height: 100dvh;
         margin: 0;
         padding-bottom: 1px;
-        overflow-y: scroll;
       }
 
       body {
@@ -41,6 +40,12 @@
         text-align: center;
       }
 
+      #canvas {
+        position: relative;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
       #viewer h1 {
         font-size: 32px;
         padding-top: 24px;
@@ -51,16 +56,19 @@
 
       #viewer {
         height: 100%;
+        max-height: 100dvh;
+        /* height: 400px!important; */
         width: 100dvw;
         max-width: 638px;
-        display: flex;
-        flex-direction: column;
         justify-content: start;
+        overflow-y: scroll;
       }
 
       .line {
         display: flex;
         align-items: center;
+
+        position: absolute;
       }
 
       .column {
@@ -190,8 +198,7 @@
       let pads = [];
       let keys = [];
       let values = [];
-      let totalScrolled;
-      let linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+      let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
       const baseLineElement = document.createElement("div");
       baseLineElement.classList.add("line");
@@ -199,6 +206,16 @@
       // console.log(baseLineElement);
       const baseCol = document.createElement("span");
       baseCol.classList.add("column");
+
+      // Large virtual scroller
+      var th = 0; // total theorical height (len(rows) * rowHeight)
+      var h = canvas.clientHeight; // virtual scroller scroll height
+      var ph = h / 100; // page height
+      var n = Math.ceil(th / ph); // number of pages
+      var vp = viewer.clientHeight; // viewer height
+      var cj = (th - h) / (n - 1); // "jumpiness" coefficient
+
+      var rh = 28; // row height
 
       fileSelect.onclick = (e) => {
         fileInput.click();
@@ -242,11 +259,10 @@
         let extraPad = 0;
 
         // html
-        totalScrolled = 0;
         globalCounter = 0;
         virtualDom = document.createDocumentFragment();
 
-        viewer.style.display = "flex";
+        viewer.style.display = "block";
         menu.style.display = "none";
 
         async function seek() {
@@ -706,6 +722,26 @@
             currentToken++;
           }
           performance.measure("parser", "parser");
+
+          // set height for virtual scroller
+          th = globalCounter * rh + 74; // virtual height
+          // th = 10_000_000_000
+
+          if (th < 1e7) {
+            // just one page
+            h = ph = th;
+            n = 1;
+            cj = 0;
+          } else {
+            // break into pages
+            h = 1e7;
+            ph = h / 100;
+            n = Math.ceil(th / ph);
+            cj = (th - h) / (n - 1);
+          }
+
+          vp = viewer.clientHeight; // viewer height
+          canvas.style.height = h
         }
 
         await seek();
@@ -738,17 +774,27 @@
       let currentLine = 0;
 
       window.addEventListener("resize", (event) => {
-        linesShown = Math.floor((document.body.offsetHeight - 74) / 28) - 1;
+        linesShown = Math.floor(document.body.clientHeight / 28) + 10;
+
+        vp = viewer.clientHeight; // viewer height
+
         renderFreshCanvas();
       });
 
       function renderFreshCanvas() {
-        let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28));
-        // console.log(start, start + linesShown);
+        var y = viewer.scrollTop + virtualScrollOffset,
+          buffer = vp,
+          top = Math.floor((y - buffer) / rh),
+          bottom = Math.ceil((y + vp + buffer) / rh);
+
+        start = Math.max(0, top);
+        bottom = Math.min(th / rh, bottom);
+
+        let diff = bottom - start;
 
         canvas.innerHTML = "";
         virtualDom = document.createDocumentFragment();
-        for (var i = 0; i <= linesShown; i++) {
+        for (var i = 0; i <= diff; i++) {
           let ind = pads.length - 1;
           if (i + start > ind) continue;
 
@@ -785,119 +831,62 @@
             }
           }
 
-          // el.style.top = `${((i + start) * 28)}px`
+          el.style.top = (start + i) * rh - virtualScrollOffset;
           virtualDom.appendChild(el);
         }
         canvas.appendChild(virtualDom);
       }
 
-      function renderCanvas() {
-        let start = Math.max(0, Math.floor((totalScrolled * 28 - 74) / 28));
+      // Large virtual scroller
+      var virtualScrollPage = 0; // current page
+      var virtualScrollOffset = 0; // current page offset
+      var prevScrollTop = 0;
 
-        let children = canvas.children;
-        for (var i = 0; i <= linesShown; i++) {
-          let ind = pads.length - 1;
-          if (i + start > ind) continue;
+      var content = canvas;
 
-          const pad = pads[i + start];
-          const key = keys[i + start];
-          const value = values[i + start];
+      // viewport.css("height", vp);
+      // content.css("height", h);
 
-          const el = children[i];
+      viewer.addEventListener("scroll", onScroll);
 
-          // Padding
-          const columns = el.querySelectorAll(".column");
-          if (columns.length <= pad) {
-            for (var j = 0; j < pad - columns.length; j++) {
-              const col = baseCol.cloneNode();
-              el.prepend(col);
-            }
-          } else {
-            for (var j = 0; j < columns.length - pad; j++) {
-              columns[j].remove();
-            }
-          }
+      function onScroll() {
+        var scrollTop = viewer.scrollTop;
 
-          // key
-          let keyEl = el.querySelector(".key");
-          keyEl.classList.remove("number", "string");
-          keyEl.innerText = "";
-          let keyType = typeof key;
-          if (keyType !== "undefined") {
-            keyEl.classList.add(keyType);
-            keyEl.innerText = `${key}:`;
-          }
-
-          // value
-          let valueEl = el.querySelector(".value");
-          valueEl.classList.remove(
-            "string",
-            "boolean",
-            "number",
-            "object",
-            "symbol",
-          );
-          valueEl.innerText = "";
-          let valueType = typeof value;
-          if (valueType !== "undefined") {
-            valueEl.classList.add(valueType);
-            if (value === TOKEN_TYPES.LEFT_BRACKET) {
-              valueEl.innerText = "[";
-            } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
-              valueEl.innerText = "]";
-            } else {
-              valueEl.innerText = String(value);
-            }
-          }
-        }
-      }
-
-      let scrollDy;
-      let scrollDir;
-      function handleInfiniteScroll(e) {
-        scrollDy = e?.deltaY || 0;
-        scrollDir = scrollDy < 0 ? -1 : scrollDy > 0 ? 1 : 0;
-        scroll(scrollDir, 5);
-        renderCanvas();
-      }
-
-      function scroll(dir, lines) {
-        totalScrolled = Math.max(
-          0,
-          Math.min(
-            totalScrolled + dir * lines,
-            pads.length - 1 - linesShown + 2,
-          ),
-        );
-      }
-
-      function handleKeyDown(e) {
-        let code = e.code;
-        if (code === "KeyJ" || code === "ArrowDown") {
-          scroll(1, 5);
-          renderCanvas();
-        } else if (code === "KeyK" || code === "ArrowUp") {
-          scroll(-1, 5);
-          renderCanvas();
-        } else if (code === "PageDown") {
-          scroll(1, 100);
-          renderCanvas();
-        } else if (code === "PageUp") {
-          scroll(-1, 100);
-          renderCanvas();
-        } else if (code === "Home") {
-          totalScrolled = 0;
-          renderCanvas();
-        } else if (code === "End") {
-          totalScrolled = pads.length - 1 - linesShown + 2;
-          renderCanvas();
+        if (Math.abs(scrollTop - prevScrollTop) > vp) {
+          onJump();
         } else {
-          console.log(e);
+          onNearScroll();
+        }
+
+        renderFreshCanvas();
+      }
+
+      function onNearScroll() {
+        var scrollTop = viewer.scrollTop;
+
+        // next virtualScrollPage
+        if (scrollTop + virtualScrollOffset > (virtualScrollPage + 1) * ph) {
+          virtualScrollPage++;
+          virtualScrollOffset = Math.round(virtualScrollPage * cj);
+          viewer.scrollTop = prevScrollTop = scrollTop - cj;
+        } else if (scrollTop + virtualScrollOffset < virtualScrollPage * ph) {
+          // prev virtualScrollPage
+          virtualScrollPage--;
+          virtualScrollOffset = Math.round(virtualScrollPage * cj);
+          viewer.scrollTop = prevScrollTop = scrollTop + cj;
+        } else {
+          prevScrollTop = scrollTop;
         }
       }
 
-      window.addEventListener("wheel", handleInfiniteScroll, false);
-      document.addEventListener("keydown", handleKeyDown, false);
+      function onJump() {
+        var scrollTop = viewer.scrollTop;
+        virtualScrollPage = Math.floor(
+          scrollTop * ((th - vp) / (h - vp)) * (1 / ph),
+        );
+        virtualScrollOffset = Math.round(virtualScrollPage * cj);
+        prevScrollTop = scrollTop;
+      }
     </script>
   </body>
 </html>
