@@ -150,8 +150,8 @@
         RIGHT_BRACKET: Symbol(),
         COLON: Symbol(),
         COMMA: Symbol(),
-        // STRING: Symbol(),
-        // NUMBER: Symbol(),
+        STRING: Symbol(),
+        NUMBER: Symbol(),
         TRUE: Symbol(),
         FALSE: Symbol(),
         NULL: Symbol(),
@@ -194,17 +194,52 @@
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("canvas");
 
-      let globalCounter;
+      // index
+      let i = 0;
+
+      let lineCounter;
       let virtualDom = null;
       let pads = [];
       let keys = [];
       let values = [];
       let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
+      // 
+
+      let file;
+      let filePageLength;
+
+      // read + decode
+      let decoder = new TextDecoder("utf-8");
+      let done;
+      let readPages;
+      let input;
+
+      // This size for tokens array is an heuristic that for every 10 chars there will be ~1 token
+      let tokens = new Array(Math.ceil(CHUNK_SIZE / 5));
+      let tokenValues = new Array(Math.ceil(CHUNK_SIZE / 10));
+      let valueIndex;
+      let consumedValueIndex;
+      let tokensToParse;
+      let lexerState;
+      let char;
+
+      let parserState;
+      let pointers;
+      let pointer;
+
+      let pointersLen;
+      let token;
+      let extraPad;
+
+      let oldCounter;
+
+      // html
+
       const baseLineElement = document.createElement("div");
       baseLineElement.classList.add("line");
       baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
-      // console.log(baseLineElement);
+
       const baseCol = document.createElement("span");
       baseCol.classList.add("column");
 
@@ -232,39 +267,35 @@
         // console.log('changed', fileInput.files[0]);
         performance.mark("fileRead");
 
-        let file = fileInput.files[0];
+        file = fileInput.files[0];
         fileName.innerText = file.name;
-        let filePageLength = Math.ceil(file.size / CHUNK_SIZE);
+        filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
         // read + decode
-        let decoder = new TextDecoder("utf-8");
-        let done = false;
-        let readPages = 0;
-        let input;
+        done = false;
+        readPages = 0;
 
-        //lexer
-        let current = 0;
-        // This size for tokens array is an heuristic that for every 10 chars there will be ~1 token
-        let tokens = new Array(Math.ceil(CHUNK_SIZE / 5));
-        let state = LEXER_STATES.NORMAL;
-        let char;
+        lexerState = LEXER_STATES.NORMAL;
 
         // parser
         pads = [];
         keys = [];
         values = [];
-        let tokensToParse = 0;
-        let json = null;
-        let parserState = PARSER_STATES.NORMAL;
-        let pointers = [{ key: null, state: PARSER_STATES.NULL, isKey: false }];
-        let pointer = pointers[0];
-        // we count 1 below for padding purposes
-        let pointersLen = 0;
-        let token;
-        let extraPad = 0;
+
+        tokensToParse = 0;
+
+        parserState = PARSER_STATES.NORMAL;
+        pointers = [{ key: null, state: PARSER_STATES.NULL, isKey: false }];
+        pointer = pointers[0];
+        // we start a 0 for padding purposes
+
+        pointersLen = 0;
+        extraPad = 0;
+
+        oldCounter = 0;
 
         // html
-        globalCounter = 0;
+        lineCounter = 0;
         virtualDom = document.createDocumentFragment();
 
         viewer.style.display = "block";
@@ -272,6 +303,7 @@
 
         async function seek() {
           performance.mark("read");
+
           const result = await file
             .slice(readPages * CHUNK_SIZE, (readPages + 1) * CHUNK_SIZE)
             .arrayBuffer();
@@ -280,6 +312,8 @@
           if (readPages > filePageLength) {
             done = true;
             performance.measure("fileRead", "fileRead");
+
+            // console.log('sizeToLines', file.size / lineCounter)
             return;
           }
 
@@ -289,16 +323,18 @@
           performance.measure("decode", "decode");
 
           // lexer
-          current = 0;
+          i = 0;
           let subStart;
           performance.mark("lexer");
-          let inputLen = input.length;
           tokensToParse = 0;
+          valueIndex = 0;
+          consumedValueIndex = 0;
+          let inputLen = input.length;
           // console.log('scanning', inputLen);
-          while (current < inputLen) {
-            char = input.charAt(current);
+          while (i < inputLen) {
+            char = input[i];
 
-            switch (state) {
+            switch (lexerState) {
               case LEXER_STATES.NORMAL:
                 switch (char) {
                   // ignore empty space
@@ -311,8 +347,8 @@
 
                   // string start
                   case '"':
-                    state = LEXER_STATES.STRING;
-                    subStart = current + 1;
+                    lexerState = LEXER_STATES.STRING;
+                    subStart = i + 1;
                     break;
 
                   // number
@@ -328,8 +364,8 @@
                   case "9":
                   case ".":
                   case "-":
-                    state = LEXER_STATES.NUMBER;
-                    subStart = current;
+                    lexerState = LEXER_STATES.NUMBER;
+                    subStart = i;
                     break;
 
                   case ":":
@@ -358,20 +394,20 @@
 
                   // true
                   case "t":
-                    state = LEXER_STATES.TRUE_T;
-                    subStart = current;
+                    lexerState = LEXER_STATES.TRUE_T;
+                    subStart = i;
                     break;
 
                   // false
                   case "f":
-                    state = LEXER_STATES.FALSE_F;
-                    subStart = current;
+                    lexerState = LEXER_STATES.FALSE_F;
+                    subStart = i;
                     break;
 
                   // null
                   case "n":
-                    state = LEXER_STATES.NULL_N;
-                    subStart = current;
+                    lexerState = LEXER_STATES.NULL_N;
+                    subStart = i;
                     break;
 
                   // character not recognized
@@ -380,7 +416,7 @@
                       "I dont know what this character is: " +
                         char +
                         " c:" +
-                        current,
+                        i,
                     );
                 }
                 break;
@@ -388,45 +424,47 @@
               case LEXER_STATES.STRING:
                 if (char !== '"') {
                   if (char === "\\") {
-                    state = LEXER_STATES.STRING_ESCAPING;
+                    lexerState = LEXER_STATES.STRING_ESCAPING;
                   }
                 } else {
-                  tokens[tokensToParse++] = input.substring(subStart, current);
-                  state = LEXER_STATES.NORMAL;
+                  tokenValues[valueIndex++] = input.substring(subStart, i); 
+                  tokens[tokensToParse++] = TOKEN_TYPES.STRING;
+                  lexerState = LEXER_STATES.NORMAL;
                 }
                 break;
 
               case LEXER_STATES.NUMBER:
                 if (char !== "." && (char < "0" || char > "9")) {
-                  tokens[tokensToParse++] = +input.substring(subStart, current);
-                  state = LEXER_STATES.NORMAL;
+                  tokenValues[valueIndex++] = input.substring(subStart, i); 
+                  tokens[tokensToParse++] = TOKEN_TYPES.NUMBER;
+                  lexerState = LEXER_STATES.NORMAL;
                   // after number end, go back 1 char
-                  current--;
+                  i--;
                 }
                 break;
 
               case LEXER_STATES.TRUE_T:
                 if (char === "r") {
-                  state = LEXER_STATES.TRUE_R;
+                  lexerState = LEXER_STATES.TRUE_R;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.TRUE_R:
                 if (char === "u") {
-                  state = LEXER_STATES.TRUE_U;
+                  lexerState = LEXER_STATES.TRUE_U;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
@@ -434,52 +472,52 @@
               case LEXER_STATES.TRUE_U:
                 if (char === "e") {
                   tokens[tokensToParse++] = TOKEN_TYPES.TRUE;
-                  state = LEXER_STATES.NORMAL;
+                  lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.FALSE_F:
                 if (char === "a") {
-                  state = LEXER_STATES.FALSE_A;
+                  lexerState = LEXER_STATES.FALSE_A;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.FALSE_A:
                 if (char === "l") {
-                  state = LEXER_STATES.FALSE_L;
+                  lexerState = LEXER_STATES.FALSE_L;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.FALSE_L:
                 if (char === "s") {
-                  state = LEXER_STATES.FALSE_S;
+                  lexerState = LEXER_STATES.FALSE_S;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
@@ -487,39 +525,39 @@
               case LEXER_STATES.FALSE_S:
                 if (char === "e") {
                   tokens[tokensToParse++] = TOKEN_TYPES.FALSE;
-                  state = LEXER_STATES.NORMAL;
+                  lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.NULL_N:
                 if (char === "u") {
-                  state = LEXER_STATES.NULL_U;
+                  lexerState = LEXER_STATES.NULL_U;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.NULL_U:
                 if (char === "l") {
-                  state = LEXER_STATES.NULL_L1;
+                  lexerState = LEXER_STATES.NULL_L1;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
@@ -527,45 +565,45 @@
               case LEXER_STATES.NULL_L1:
                 if (char === "l") {
                   tokens[tokensToParse++] = TOKEN_TYPES.NULL;
-                  state = LEXER_STATES.NORMAL;
+                  lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
                     "I dont know what this character is: " +
                       char +
                       " c:" +
-                      current,
+                      i,
                   );
                 }
                 break;
 
               case LEXER_STATES.STRING_ESCAPING:
-                state = LEXER_STATES.STRING;
+                lexerState = LEXER_STATES.STRING;
                 break;
             }
 
-            current++;
+            ++i;
           }
           performance.measure("lexer", "lexer");
 
           // parser
           performance.mark("parser");
           // console.log('parsing ', tokensToParse);
-          current = 0;
-          while (current < tokensToParse) {
+          i = 0;
+          while (i < tokensToParse) {
             let ind = pads.length - 1;
-            token = tokens[current];
+            token = tokens[i];
             parserState = pointer.state;
 
-            if (typeof token === "string") {
+            if (token === TOKEN_TYPES.STRING) {
               if (parserState === PARSER_STATES.ARRAY) {
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               }
 
               if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
-                pointer.key = token;
+                pointer.key = tokenValues[consumedValueIndex++];
                 pointer.isKey = false;
-                globalCounter += 1;
+                lineCounter += 1;
 
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
@@ -577,26 +615,26 @@
                 pointer.isKey = true;
 
                 ind = pads.length - 1;
-                values[ind] = token;
+                values[ind] = tokenValues[consumedValueIndex++];
               }
-            } else if (typeof token === "number") {
+            } else if (token === TOKEN_TYPES.NUMBER) {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
               }
 
               ind = pads.length - 1;
-              values[ind] = token;
+              values[ind] = tokenValues[consumedValueIndex++];
             } else if (token === TOKEN_TYPES.COLON) {
               // DO NOTHING
             } else if (token === TOKEN_TYPES.COMMA) {
               // DO NOTHING
             } else if (token === TOKEN_TYPES.LEFT_BRACE) {
               if (parserState === PARSER_STATES.ARRAY) {
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
                 let newPointer = {
                   key: null,
@@ -633,7 +671,7 @@
               }
             } else if (token === TOKEN_TYPES.LEFT_BRACKET) {
               if (parserState === PARSER_STATES.ARRAY) {
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
 
                 let newPointer = {
@@ -645,7 +683,7 @@
                 pointersLen++;
                 pointer = newPointer;
 
-                globalCounter += 1;
+                lineCounter += 1;
 
                 ind = pads.length - 1;
                 values[ind] = TOKEN_TYPES.LEFT_BRACKET;
@@ -653,7 +691,7 @@
                 pointer.state = PARSER_STATES.ARRAY;
                 pointer.isKey = false;
                 pointer.key = 0;
-                globalCounter += 2;
+                lineCounter += 2;
 
                 setLine(
                   pointersLen + extraPad,
@@ -670,7 +708,7 @@
                 pointers.push(newPointer);
                 pointersLen++;
                 pointer = newPointer;
-                globalCounter += 1;
+                lineCounter += 1;
 
                 ind = pads.length - 1;
                 values[ind] = TOKEN_TYPES.LEFT_BRACKET;
@@ -698,7 +736,7 @@
             } else if (token === TOKEN_TYPES.TRUE) {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
@@ -709,7 +747,7 @@
             } else if (token === TOKEN_TYPES.FALSE) {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
@@ -720,7 +758,7 @@
             } else if (token === TOKEN_TYPES.NULL) {
               if (parserState === PARSER_STATES.ARRAY) {
                 pointer.key++;
-                globalCounter += 1;
+                lineCounter += 1;
                 setLine(pointersLen + extraPad, pointer.key, undefined);
               } else {
                 pointer.isKey = true;
@@ -729,16 +767,18 @@
               ind = pads.length - 1;
               values[ind] = null;
             } else {
-              console.error(parserState, current, token, tokens);
+              console.error(parserState, i, token, tokens);
               throw new TypeError(token);
             }
 
-            current++;
+            ++i;
           }
           performance.measure("parser", "parser");
+          // console.log("lines   ", lineCounter - oldCounter)
+          oldCounter = lineCounter;
 
           // set height for virtual scroller
-          th = globalCounter * rh + 74; // virtual height
+          th = lineCounter * rh + 74; // virtual height
           // th = 10_000_000_000
 
           if (th < 1e7) {
@@ -793,8 +833,6 @@
         });
       }
 
-      let currentLine = 0;
-
       window.addEventListener("resize", (event) => {
         linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
@@ -816,7 +854,7 @@
 
         canvas.innerHTML = "";
         virtualDom = document.createDocumentFragment();
-        for (var i = 0; i <= diff; i++) {
+        for (i = 0; i <= diff; ++i) {
           let ind = pads.length - 1;
           if (i + start > ind) continue;
 
