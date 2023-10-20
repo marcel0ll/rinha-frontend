@@ -224,14 +224,10 @@
       let readPages;
       let input;
 
-      let tokens;
-      let tokenValues;
-      let tokensToParse;
       let consumedValueIndex;
       let lexerState;
       let char;
 
-      let parserState;
       let pointers;
       let pointer;
 
@@ -295,11 +291,6 @@
         keys = [];
         values = [];
 
-        tokens = [];
-        tokenValues = [];
-        tokensToParse = 0;
-
-        parserState;
         pointers = [{ key: 0, state: PARSER_STATES.NULL, isKey: false }];
         pointer = pointers[0];
         // we start a 0 for padding purposes
@@ -317,7 +308,6 @@
         menu.style.display = "none";
 
         async function seek() {
-          tokens = [];
           performance.mark("read");
 
           const result = await reader.read(new Uint8Array(buffer));
@@ -334,11 +324,10 @@
           input = decoder.decode(result.value);
           performance.measure("decode", "decode");
 
-          // lexer
+          // lexer+parser
           i = 0;
           let subStart;
-          performance.mark("lexer");
-          tokensToParse = 0;
+          performance.mark("lexer_parser");
           consumedValueIndex = 0;
           let inputLen = input.length;
 
@@ -380,27 +369,115 @@
                     break;
 
                   case ":":
-                    tokens.push(TOKEN_TYPES.COLON);
-                    break;
-
                   case ",":
-                    tokens.push(TOKEN_TYPES.COMMA);
+                    // do nothing
                     break;
 
                   case "{":
-                    tokens.push(TOKEN_TYPES.LEFT_BRACE);
+                    if (pointer.state === PARSER_STATES.ARRAY) {
+                      lineCounter += 1;
+                      setLine(pointersLen + extraPad, pointer.key, undefined);
+                      let newPointer = {
+                        key: 0,
+                        state: PARSER_STATES.OBJECT,
+                        isKey: true,
+                      };
+                      pointers.push(newPointer);
+                      pointersLen++;
+                      pointer = newPointer;
+                    } else if (pointer.state === PARSER_STATES.NULL) {
+                      pointer.state = PARSER_STATES.OBJECT;
+                      pointer.isKey = true;
+                      pointer.key = 0;
+                    } else {
+                      let newPointer = {
+                        key: 0,
+                        state: PARSER_STATES.OBJECT,
+                        isKey: true,
+                      };
+                      pointers.push(newPointer);
+                      pointersLen++;
+                      pointer = newPointer;
+                    }
                     break;
 
                   case "}":
-                    tokens.push(TOKEN_TYPES.RIGHT_BRACE);
+                    if (pointersLen > 0) {
+                      pointers.pop();
+                      pointersLen--;
+                      pointer = pointers[pointersLen];
+                      if (pointer.state === PARSER_STATES.ARRAY) {
+                        pointer.key += 1;
+                      } else {
+                        pointer.isKey = true;
+                      }
+                    }
                     break;
 
                   case "[":
-                    tokens.push(TOKEN_TYPES.LEFT_BRACKET);
+                    if (pointer.state === PARSER_STATES.ARRAY) {
+                      lineCounter += 1;
+                      setLine(pointersLen + extraPad, pointer.key, undefined);
+
+                      let newPointer = {
+                        key: 0,
+                        state: PARSER_STATES.ARRAY,
+                        isKey: false,
+                      };
+                      pointers.push(newPointer);
+                      pointersLen++;
+                      pointer = newPointer;
+
+                      lineCounter += 1;
+
+                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
+                    } else if (pointer.state === PARSER_STATES.NULL) {
+                      pointer.state = PARSER_STATES.ARRAY;
+                      pointer.isKey = false;
+                      pointer.key = 0;
+                      lineCounter += 2;
+
+                      setLine(
+                        pointersLen + extraPad,
+                        undefined,
+                        TOKEN_TYPES.LEFT_BRACKET,
+                      );
+                      extraPad = 1;
+                    } else {
+                      let newPointer = {
+                        key: 0,
+                        state: PARSER_STATES.ARRAY,
+                        isKey: false,
+                      };
+                      pointers.push(newPointer);
+                      pointersLen++;
+                      pointer = newPointer;
+                      lineCounter += 1;
+
+                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
+                    }
                     break;
 
                   case "]":
-                    tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
+                    let isRoot = 0;
+                    if (pointersLen > 0) {
+                      pointers.pop();
+                      pointersLen--;
+                      pointer = pointers[pointersLen];
+                      if (pointer.state === PARSER_STATES.ARRAY) {
+                        pointer.key += 1;
+                      } else {
+                        pointer.isKey = true;
+                      }
+                    } else {
+                      isRoot = 1;
+                    }
+
+                    setLine(
+                      pointersLen + extraPad - isRoot,
+                      undefined,
+                      TOKEN_TYPES.RIGHT_BRACKET,
+                    );
                     break;
 
                   // true
@@ -435,16 +512,39 @@
                     lexerState = LEXER_STATES.STRING_ESCAPING;
                   }
                 } else {
-                  tokenValues.push(input.substring(subStart, i));
-                  tokens.push(TOKEN_TYPES.STRING);
+                  if (pointer.state === PARSER_STATES.OBJECT && pointer.isKey) {
+                    pointer.key = input.substring(subStart, i);
+                    pointer.isKey = false;
+                    lineCounter += 1;
+
+                    setLine(pointersLen + extraPad, pointer.key, undefined);
+                  } else {
+                    if (pointer.state === PARSER_STATES.ARRAY) {
+                      pointer.key++;
+                    } 
+                    pointer.isKey = true;
+
+                    ind = pads.length - 1;
+                    values[ind] = input.substring(subStart, i);
+                  }
+
                   lexerState = LEXER_STATES.NORMAL;
                 }
                 break;
 
               case LEXER_STATES.NUMBER:
                 if (char !== "." && (char < "0" || char > "9")) {
-                  tokenValues.push(input.substring(subStart, i));
-                  tokens.push(TOKEN_TYPES.NUMBER);
+                  if (pointer.state === PARSER_STATES.ARRAY) {
+                    pointer.key++;
+                    lineCounter += 1;
+                    setLine(pointersLen + extraPad, pointer.key, undefined);
+                  } else {
+                    pointer.isKey = true;
+                  }
+
+                  ind = pads.length - 1;
+                  values[ind] = +input.substring(subStart, i);
+
                   lexerState = LEXER_STATES.NORMAL;
                   // after number end, go back 1 char
                   i--;
@@ -473,7 +573,15 @@
 
               case LEXER_STATES.TRUE_U:
                 if (char === "e") {
-                  tokens.push(TOKEN_TYPES.TRUE);
+                  if (pointer.state === PARSER_STATES.ARRAY) {
+                    pointer.key++;
+                    lineCounter += 1;
+                    setLine(pointersLen + extraPad, pointer.key, undefined);
+                  } else {
+                    pointer.isKey = true;
+                  }
+
+                  values[pads.length-1] = true;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -514,7 +622,15 @@
 
               case LEXER_STATES.FALSE_S:
                 if (char === "e") {
-                  tokens.push(TOKEN_TYPES.FALSE);
+                  if (pointer.state === PARSER_STATES.ARRAY) {
+                    pointer.key++;
+                    lineCounter += 1;
+                    setLine(pointersLen + extraPad, pointer.key, undefined);
+                  } else {
+                    pointer.isKey = true;
+                  }
+
+                  values[pads.length-1] = false;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -545,7 +661,15 @@
 
               case LEXER_STATES.NULL_L1:
                 if (char === "l") {
-                  tokens.push(TOKEN_TYPES.NULL);
+                  if (pointer.state === PARSER_STATES.ARRAY) {
+                    pointer.key++;
+                    lineCounter += 1;
+                    setLine(pointersLen + extraPad, pointer.key, undefined);
+                  } else {
+                    pointer.isKey = true;
+                  }
+
+                  values[pads.length-1] = null;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -561,206 +685,8 @@
 
             ++i;
           }
-          performance.measure("lexer", "lexer");
+          performance.measure("lexer_parser", "lexer_parser");
 
-          // parser
-          performance.mark("parser");
-          i = 0;
-          const tokensLen = tokens.length;
-          while (i < tokensLen) {
-            token = tokens[i];
-            parserState = pointer.state;
-
-            switch (token) {
-              case TOKEN_TYPES.STRING:
-                if (parserState === PARSER_STATES.OBJECT && pointer.isKey) {
-                  pointer.key = tokenValues[consumedValueIndex++];
-                  pointer.isKey = false;
-                  lineCounter += 1;
-
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                } else {
-                  if (parserState === PARSER_STATES.ARRAY) {
-                    pointer.key++;
-                  } 
-                  pointer.isKey = true;
-
-                  ind = pads.length - 1;
-                  values[ind] = tokenValues[consumedValueIndex++];
-                }
-                break;
-
-              case TOKEN_TYPES.NUMBER:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  pointer.key++;
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                } else {
-                  pointer.isKey = true;
-                }
-
-                ind = pads.length - 1;
-                values[ind] = +tokenValues[consumedValueIndex++];
-                break;
-
-              case TOKEN_TYPES.COLON:
-              case TOKEN_TYPES.COMMA:
-                break;
-
-              case TOKEN_TYPES.LEFT_BRACE:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                  let newPointer = {
-                    key: 0,
-                    state: PARSER_STATES.OBJECT,
-                    isKey: true,
-                  };
-                  pointers.push(newPointer);
-                  pointersLen++;
-                  pointer = newPointer;
-                } else if (parserState === PARSER_STATES.NULL) {
-                  pointer.state = PARSER_STATES.OBJECT;
-                  pointer.isKey = true;
-                  pointer.key = 0;
-                } else {
-                  let newPointer = {
-                    key: 0,
-                    state: PARSER_STATES.OBJECT,
-                    isKey: true,
-                  };
-                  pointers.push(newPointer);
-                  pointersLen++;
-                  pointer = newPointer;
-                }
-                break;
-
-              case TOKEN_TYPES.RIGHT_BRACE:
-                if (pointersLen > 0) {
-                  pointers.pop();
-                  pointersLen--;
-                  pointer = pointers[pointersLen];
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key += 1;
-                  } else {
-                    pointer.isKey = true;
-                  }
-                }
-                break;
-
-              case TOKEN_TYPES.LEFT_BRACKET:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-
-                  let newPointer = {
-                    key: 0,
-                    state: PARSER_STATES.ARRAY,
-                    isKey: false,
-                  };
-                  pointers.push(newPointer);
-                  pointersLen++;
-                  pointer = newPointer;
-
-                  lineCounter += 1;
-
-                  values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
-                } else if (parserState === PARSER_STATES.NULL) {
-                  pointer.state = PARSER_STATES.ARRAY;
-                  pointer.isKey = false;
-                  pointer.key = 0;
-                  lineCounter += 2;
-
-                  setLine(
-                    pointersLen + extraPad,
-                    undefined,
-                    TOKEN_TYPES.LEFT_BRACKET,
-                  );
-                  extraPad = 1;
-                } else {
-                  let newPointer = {
-                    key: 0,
-                    state: PARSER_STATES.ARRAY,
-                    isKey: false,
-                  };
-                  pointers.push(newPointer);
-                  pointersLen++;
-                  pointer = newPointer;
-                  lineCounter += 1;
-
-                  values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
-                }
-                break;
-
-              case TOKEN_TYPES.RIGHT_BRACKET:
-                let isRoot = 0;
-                if (pointersLen > 0) {
-                  pointers.pop();
-                  pointersLen--;
-                  pointer = pointers[pointersLen];
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key += 1;
-                  } else {
-                    pointer.isKey = true;
-                  }
-                } else {
-                  isRoot = 1;
-                }
-
-                setLine(
-                  pointersLen + extraPad - isRoot,
-                  undefined,
-                  TOKEN_TYPES.RIGHT_BRACKET,
-                );
-
-                break;
-
-              case TOKEN_TYPES.TRUE:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  pointer.key++;
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                } else {
-                  pointer.isKey = true;
-                }
-
-                values[pads.length-1] = true;
-                break;
-
-              case TOKEN_TYPES.FALSE:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  pointer.key++;
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                } else {
-                  pointer.isKey = true;
-                }
-
-                values[pads.length-1] = false;
-
-                break;
-
-              case TOKEN_TYPES.NULL:
-                if (parserState === PARSER_STATES.ARRAY) {
-                  pointer.key++;
-                  lineCounter += 1;
-                  setLine(pointersLen + extraPad, pointer.key, undefined);
-                } else {
-                  pointer.isKey = true;
-                }
-
-                values[pads.length-1] = null;
-                break;
-
-              default:
-                console.error(parserState, i, token, tokens);
-                throw new TypeError(token);
-            }
-
-            ++i;
-          }
-
-          performance.measure("parser", "parser");
           oldCounter = lineCounter;
 
           // set height for virtual scroller
