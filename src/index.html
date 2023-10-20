@@ -224,12 +224,10 @@
       let readPages;
       let input;
 
-      // This size for tokens array is an heuristic that for every 10 chars there will be ~1 token
-      let tokens = new Array(Math.ceil(CHUNK_SIZE / 5));
-      let tokenValues = new Array(Math.ceil(CHUNK_SIZE / 10));
-      let valueIndex;
-      let consumedValueIndex;
+      let tokens;
+      let tokenValues;
       let tokensToParse;
+      let consumedValueIndex;
       let lexerState;
       let char;
 
@@ -297,6 +295,8 @@
         keys = [];
         values = [];
 
+        tokens = [];
+        tokenValues = [];
         tokensToParse = 0;
 
         parserState;
@@ -317,6 +317,7 @@
         menu.style.display = "none";
 
         async function seek() {
+          tokens = [];
           performance.mark("read");
 
           const result = await reader.read(new Uint8Array(buffer));
@@ -338,12 +339,11 @@
           let subStart;
           performance.mark("lexer");
           tokensToParse = 0;
-          valueIndex = 0;
           consumedValueIndex = 0;
           let inputLen = input.length;
 
           while (i < inputLen) {
-            char = input.charAt(i);
+            char = input[i];
 
             switch (lexerState) {
               case LEXER_STATES.NORMAL:
@@ -380,27 +380,27 @@
                     break;
 
                   case ":":
-                    tokens[tokensToParse++] = TOKEN_TYPES.COLON;
+                    tokens.push(TOKEN_TYPES.COLON);
                     break;
 
                   case ",":
-                    tokens[tokensToParse++] = TOKEN_TYPES.COMMA;
+                    tokens.push(TOKEN_TYPES.COMMA);
                     break;
 
                   case "{":
-                    tokens[tokensToParse++] = TOKEN_TYPES.LEFT_BRACE;
+                    tokens.push(TOKEN_TYPES.LEFT_BRACE);
                     break;
 
                   case "}":
-                    tokens[tokensToParse++] = TOKEN_TYPES.RIGHT_BRACE;
+                    tokens.push(TOKEN_TYPES.RIGHT_BRACE);
                     break;
 
                   case "[":
-                    tokens[tokensToParse++] = TOKEN_TYPES.LEFT_BRACKET;
+                    tokens.push(TOKEN_TYPES.LEFT_BRACKET);
                     break;
 
                   case "]":
-                    tokens[tokensToParse++] = TOKEN_TYPES.RIGHT_BRACKET;
+                    tokens.push(TOKEN_TYPES.RIGHT_BRACKET);
                     break;
 
                   // true
@@ -435,16 +435,16 @@
                     lexerState = LEXER_STATES.STRING_ESCAPING;
                   }
                 } else {
-                  tokenValues[valueIndex++] = input.substring(subStart, i);
-                  tokens[tokensToParse++] = TOKEN_TYPES.STRING;
+                  tokenValues.push(input.substring(subStart, i));
+                  tokens.push(TOKEN_TYPES.STRING);
                   lexerState = LEXER_STATES.NORMAL;
                 }
                 break;
 
               case LEXER_STATES.NUMBER:
                 if (char !== "." && (char < "0" || char > "9")) {
-                  tokenValues[valueIndex++] = input.substring(subStart, i);
-                  tokens[tokensToParse++] = TOKEN_TYPES.NUMBER;
+                  tokenValues.push(input.substring(subStart, i));
+                  tokens.push(TOKEN_TYPES.NUMBER);
                   lexerState = LEXER_STATES.NORMAL;
                   // after number end, go back 1 char
                   i--;
@@ -473,7 +473,7 @@
 
               case LEXER_STATES.TRUE_U:
                 if (char === "e") {
-                  tokens[tokensToParse++] = TOKEN_TYPES.TRUE;
+                  tokens.push(TOKEN_TYPES.TRUE);
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -514,7 +514,7 @@
 
               case LEXER_STATES.FALSE_S:
                 if (char === "e") {
-                  tokens[tokensToParse++] = TOKEN_TYPES.FALSE;
+                  tokens.push(TOKEN_TYPES.FALSE);
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -545,7 +545,7 @@
 
               case LEXER_STATES.NULL_L1:
                 if (char === "l") {
-                  tokens[tokensToParse++] = TOKEN_TYPES.NULL;
+                  tokens.push(TOKEN_TYPES.NULL);
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
                   throw new TypeError(
@@ -566,7 +566,8 @@
           // parser
           performance.mark("parser");
           i = 0;
-          while (i < tokensToParse) {
+          const tokensLen = tokens.length;
+          while (i < tokensLen) {
             token = tokens[i];
             parserState = pointer.state;
 
