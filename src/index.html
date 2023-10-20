@@ -152,7 +152,7 @@
         style="display: none"
       />
       <button id="fileSelect" type="button">Load JSON</button>
-      <p style="color: #bf0e0e; display: none">
+      <p id="alert" style="color: #bf0e0e; display: none">
         Invalid file. Please load a valid JSON file.
       </p>
     </section>
@@ -212,6 +212,7 @@
       const fileName = document.getElementById("filename");
       const fileSelect = document.getElementById("fileSelect");
       const fileInput = document.getElementById("fileInput");
+      const alert = document.getElementById("alert");
 
       const viewer = document.getElementById("viewer");
       const canvas = document.getElementById("canvas");
@@ -289,7 +290,18 @@
         canvas.innerHTML = '';
       }
 
+      function invalidateFile(char, i) {
+        done = true;
+        menu.style.display = "block";
+        viewer.style.display = "none";
+        alert.style.display = "block";
+        canvas.innerHTML = '';
+      }
+
       fileInput.onchange = async (e) => {
+        // ensure alert is hidden
+        alert.style.display = "none";
+
         performance.mark("fileRead");
 
         file = fileInput.files[0];
@@ -517,9 +529,7 @@
 
                   // character not recognized
                   default:
-                    throw new TypeError(
-                      "I dont know what this character is: " + char + " c:" + i,
-                    );
+                    invalidateFile(char, i);
                 }
                 break;
 
@@ -574,9 +584,7 @@
                 if (char === "r") {
                   lexerState = LEXER_STATES.TRUE_R;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -584,9 +592,7 @@
                 if (char === "u") {
                   lexerState = LEXER_STATES.TRUE_U;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -603,9 +609,7 @@
                   values[pads.length-1] = true;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -613,9 +617,7 @@
                 if (char === "a") {
                   lexerState = LEXER_STATES.FALSE_A;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -623,9 +625,7 @@
                 if (char === "l") {
                   lexerState = LEXER_STATES.FALSE_L;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -633,9 +633,7 @@
                 if (char === "s") {
                   lexerState = LEXER_STATES.FALSE_S;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -652,9 +650,7 @@
                   values[pads.length-1] = false;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -662,9 +658,7 @@
                 if (char === "u") {
                   lexerState = LEXER_STATES.NULL_U;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -672,9 +666,7 @@
                 if (char === "l") {
                   lexerState = LEXER_STATES.NULL_L1;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
@@ -691,9 +683,7 @@
                   values[pads.length-1] = null;
                   lexerState = LEXER_STATES.NORMAL;
                 } else {
-                  throw new TypeError(
-                    "I dont know what this character is: " + char + " c:" + i,
-                  );
+                  invalidateFile(char, i);
                 }
                 break;
 
