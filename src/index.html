@@ -42,7 +42,6 @@
 
       #canvas {
         position: relative;
-        overflow: hidden;
         pointer-events: none;
       }
 
@@ -64,7 +63,8 @@
         max-height: 100dvh;
         /* height: 400px!important; */
         width: 100dvw;
-        max-width: 638px;
+        max-width: 1200px;
+        padding: 0 20px;
         justify-content: start;
         overflow-y: scroll;
       }
@@ -117,6 +117,11 @@
         font-weight: 400;
       }
 
+
+      #back {
+        aspect-ratio: 1;
+      }
+
       .value.object {
         color: #d557da;
       }
@@ -154,7 +159,7 @@
     <section id="viewer" style="display: none">
       <div id="title" >
         <h1 id="filename"></h1>
-        <button id="back">X</button>
+        <button id="back">✖</button>
       </div>
       <div id="canvas"></div>
     </section>
