@@ -7,6 +7,16 @@
         src: url(./inter_variable.ttf);
       }
 
+      button {
+        background: linear-gradient(to bottom, #E4E4E4, #F7F7F7);
+        border-radius: 5px;
+        border: 1px solid #000000;
+      }
+
+      #fileSelect {
+        padding: 6px 12px 6px 12px;
+      }
+
       * {
         box-sizing: border-box;
       }
@@ -29,6 +39,7 @@
       h1 {
         font-weight: 700;
         line-height: 1.2;
+        font-size: 48px;
       }
 
       h2 {
@@ -38,6 +49,11 @@
 
       #menu {
         text-align: center;
+      }
+
+      #alert {
+        display: none;
+        color: #bf0e0e; 
       }
 
       #canvas {
@@ -51,10 +67,23 @@
         height: 74px; 
         padding-top: 24px; 
         padding-bottom: 10px;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: white;
+        font-size: 32px;
+        align-items: center;
+        transition: height 1s, font-size 1s, padding 1s;
       }
 
-      #viewer h1 {
-        font-size: 32px;
+      #title.animate {
+        padding: 0;
+        height: 36px;
+        font-size: 20px;
+      }
+
+      #fileName {
+        font-size: inherit;
         margin: 0;
       }
 
@@ -143,7 +172,7 @@
     <section id="menu">
       <h1>JSON Tree Viewer</h1>
       <h2>
-        Simple JSON Viewer that runs compvarely on-client. No data exchange
+        Simple JSON Viewer that runs completely on-client. No data exchange 
       </h2>
       <input
         type="file"
@@ -152,12 +181,12 @@
         style="display: none"
       />
       <button id="fileSelect" type="button">Load JSON</button>
-      <p id="alert" style="color: #bf0e0e; display: none">
+      <p id="alert">
         Invalid file. Please load a valid JSON file.
       </p>
     </section>
     <section id="viewer" style="display: none">
-      <div id="title" >
+      <div id="title" class="">
         <h1 id="filename"></h1>
         <button id="back">✖</button>
       </div>
@@ -209,6 +238,7 @@
       const back = document.getElementById("back");
       const menu = document.getElementById("menu");
 
+      const title = document.getElementById("title");
       const fileName = document.getElementById("filename");
       const fileSelect = document.getElementById("fileSelect");
       const fileInput = document.getElementById("fileInput");
@@ -833,6 +863,12 @@
 
       function onScroll() {
         var scrollTop = viewer.scrollTop;
+
+        if (scrollTop > 0) {
+          title.classList.add("animate");
+        } else {
+          title.classList.remove("animate");
+        }
 
         if (Math.abs(scrollTop - prevScrollTop) > vp) {
           onJump();
