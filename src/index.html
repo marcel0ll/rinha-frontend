@@ -48,6 +48,7 @@
 
       #title {
         display: flex; 
+        justify-content: space-between;
         height: 74px; 
         padding-top: 24px; 
         padding-bottom: 10px;
@@ -116,7 +117,17 @@
         font-weight: 400;
       }
 
-      .symbol {
+      .value.object {
+        color: #d557da;
+      }
+      .value.string {
+        color: #e86767;
+      }
+      .value.boolean,
+      .value.number {
+        color: #3d64ff;
+      }
+      .value.symbol {
         color: #f2cab8;
         font-weight: 700;
       }
@@ -142,8 +153,8 @@
     </section>
     <section id="viewer" style="display: none">
       <div id="title" >
-        <button id="back">Back</button>
         <h1 id="filename"></h1>
+        <button id="back">X</button>
       </div>
       <div id="canvas"></div>
     </section>
