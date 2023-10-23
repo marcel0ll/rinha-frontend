@@ -316,12 +316,15 @@
         canvas.innerHTML = '';
       }
 
-      function invalidateFile(char, i) {
+      function invalidateFile(char, i, message) {
         done = true;
         menu.style.display = "block";
         viewer.style.display = "none";
         alert.style.display = "block";
         canvas.innerHTML = '';
+        if (message) {
+          console.error(message, char, i);
+        }
       }
 
       fileInput.onchange = async (e) => {
@@ -379,6 +382,7 @@
         viewer.style.display = "block";
         menu.style.display = "none";
 
+        parsedChars = 0
         async function seek() {
           performance.mark("read");
 
@@ -400,6 +404,9 @@
 
           scanner: while (i < inputLen && !done) {
             char = input[i];
+
+            // console.log(stateStack);
+            // console.log(char, state);
 
             switch(state) {
               case STATES.VALUE:
@@ -482,10 +489,12 @@
                   case 'r':
                   case 't':
                     stackReplace(STATES.STRING);
+                    break;
                   case 'u':
                     stackReplace(STATES.STRING_UNICODE_1)
+                    break;
                   default:
-                    invalidateFile(char, i);
+                    invalidateFile(char, i, "Escaping");
                     break scanner;
                     break;
                 }
@@ -775,11 +784,12 @@
 
             i++;
           }
+          parsedChars += i;
+          // console.log(parsedChars/file.size);
 
-          if (result.done) {
+          if (parsedChars === file.size || result.done) {
             done = true;
             performance.measure("fileRead", "fileRead");
-            return;
           }
 
           if (done && stateStack.length) {
