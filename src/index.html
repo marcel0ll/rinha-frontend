@@ -197,42 +197,38 @@
       const TOKEN_TYPES = {
         LEFT_BRACE: Symbol(),
         RIGHT_BRACE: Symbol(),
-        LEFT_BRACKET: Symbol(),
-        RIGHT_BRACKET: Symbol(),
-        COLON: Symbol(),
-        COMMA: Symbol(),
-        STRING: Symbol(),
-        NUMBER: Symbol(),
-        TRUE: Symbol(),
-        FALSE: Symbol(),
-        NULL: Symbol(),
-      };
+      }
 
-      const LEXER_STATES = {
-        NORMAL: Symbol(),
-        NUMBER: Symbol(),
-        STRING: Symbol(),
-        STRING_ESCAPING: Symbol(),
-        TRUE_T: Symbol(),
-        TRUE_R: Symbol(),
-        TRUE_U: Symbol(),
-        // TRUE_E: Symbol(),
-        FALSE_F: Symbol(),
-        FALSE_A: Symbol(),
-        FALSE_L: Symbol(),
-        FALSE_S: Symbol(),
-        // FALSE_E: Symbol(),
-        NULL_N: Symbol(),
-        NULL_U: Symbol(),
-        NULL_L1: Symbol(),
-        // NULL_L2: Symbol(),
-      };
-
-      const PARSER_STATES = {
-        NULL: Symbol("NULL"),
-        OBJECT: Symbol("OBJECT"),
+      const STATES = {
+        VALUE: Symbol("VALUE"),
+        WHITESPACE_VALUE: Symbol("WHITESPACE_VALUE"),
+        STRING: Symbol("STRING"),
+        STRING_ESCAPING: Symbol("STRING_ESCAPING"),
+        STRING_UNICODE_1: Symbol("STRING_UNICODE_1"),
+        STRING_UNICODE_2: Symbol("STRING_UNICODE_2"),
+        STRING_UNICODE_3: Symbol("STRING_UNICODE_3"),
+        STRING_UNICODE_4: Symbol("STRING_UNICODE_4"),
+        NUMBER_ZERO: Symbol("NUMBER_ZERO"),
+        NUMBER_INTEGER: Symbol("NUMBER_INTEGER"),
+        NUMBER_FRACTION: Symbol("NUMBER_FRACTION"),
+        NUMBER_EXPONENTIAL_INIT: Symbol("NUMBER_EXPONENTIAL"),
+        NUMBER_EXPONENTIAL: Symbol("NUMBER_EXPONENTIAL"),
+        TRUE_T: Symbol("TRUE_T"),
+        TRUE_R: Symbol("TRUE_R"),
+        TRUE_U: Symbol("TRUE_U"),
+        FALSE_F: Symbol("FALSE_F"),
+        FALSE_A: Symbol("FALSE_A"),
+        FALSE_L: Symbol("FALSE_L"),
+        FALSE_S: Symbol("FALSE_S"),
+        NULL_N: Symbol("NULL_N"),
+        NULL_U: Symbol("NULL_U"),
+        NULL_L: Symbol("NULL_L"),
         ARRAY: Symbol("ARRAY"),
-      };
+        ARRAY_MORE: Symbol("ARRAY_MORE"),
+        OBJECT_KEY: Symbol("OBJECT_KEY"),
+        OBJECT_COLON: Symbol("OBJECT_COLON"),
+        OBJECT_MORE: Symbol("OBJECT_MORE"),
+      }
 
       // elements
       const back = document.getElementById("back");
@@ -272,7 +268,7 @@
       let input;
 
       let consumedValueIndex;
-      let lexerState;
+      let state;
       let char;
 
       let pointers;
@@ -343,16 +339,33 @@
         done = false;
         readPages = 0;
 
-        lexerState = LEXER_STATES.NORMAL;
-
         // parser
         pads = [];
         keys = [];
         values = [];
 
-        pointers = [{ key: 0, state: PARSER_STATES.NULL, isKey: false }];
-        pointer = pointers[0];
-        // we start a 0 for padding purposes
+        stateStack = [STATES.VALUE];
+        state = STATES.VALUE;
+
+        function stackReplace(newState) {
+          stateStack.pop()
+          stateStack.push(newState);
+          state = newState;
+        }
+
+        function stackPush(newState) {
+          stateStack.push(newState);
+          state = newState;
+        }
+
+        function stackPop() {
+          stateStack.pop()
+          if (stateStack.length) {
+            state = stateStack[stateStack.length - 1];
+          } else {
+            state = null;
+          }
+        }
 
         pointersLen = 0;
         extraPad = 0;
@@ -372,11 +385,6 @@
           const result = await reader.read(new Uint8Array(buffer));
 
           buffer = result.value.buffer;
-          if (result.done) {
-            done = true;
-            performance.measure("fileRead", "fileRead");
-            return;
-          }
 
           performance.measure("read", "read");
           performance.mark("decode");
@@ -390,340 +398,394 @@
           consumedValueIndex = 0;
           let inputLen = input.length;
 
-          while (i < inputLen) {
+          scanner: while (i < inputLen && !done) {
             char = input[i];
 
-            switch (lexerState) {
-              case LEXER_STATES.NORMAL:
-                switch (char) {
-                  // ignore empty space
-                  case " ":
-                  case "\t":
-                  case "\r":
-                  case "\n":
-                    // do nothing
-                    break;
-
-                  // string start
+            switch(state) {
+              case STATES.VALUE:
+                switch(char) {
                   case '"':
-                    lexerState = LEXER_STATES.STRING;
-                    subStart = i + 1;
+                    stackReplace(STATES.STRING);
                     break;
 
-                  // number
-                  case "0":
-                  case "1":
-                  case "2":
-                  case "3":
-                  case "4":
-                  case "5":
-                  case "6":
-                  case "7":
-                  case "8":
-                  case "9":
-                  case ".":
-                  case "-":
-                    lexerState = LEXER_STATES.NUMBER;
-                    subStart = i;
+                  // NUMBERS
+                  case '0':
+                    stackReplace(STATES.NUMBER_ZERO);
                     break;
-
-                  case ":":
-                  case ",":
-                    // do nothing
-                    break;
-
-                  case "{":
-                    if (pointer.state === PARSER_STATES.ARRAY) {
-                      lineCounter += 1;
-                      setLine(pointersLen + extraPad, pointer.key, undefined);
-                      let newPointer = {
-                        key: 0,
-                        state: PARSER_STATES.OBJECT,
-                        isKey: true,
-                      };
-                      pointers.push(newPointer);
-                      pointersLen++;
-                      pointer = newPointer;
-                    } else if (pointer.state === PARSER_STATES.NULL) {
-                      pointer.state = PARSER_STATES.OBJECT;
-                      pointer.isKey = true;
-                      pointer.key = 0;
-                    } else {
-                      let newPointer = {
-                        key: 0,
-                        state: PARSER_STATES.OBJECT,
-                        isKey: true,
-                      };
-                      pointers.push(newPointer);
-                      pointersLen++;
-                      pointer = newPointer;
-                    }
-                    break;
-
-                  case "}":
-                    if (pointersLen > 0) {
-                      pointers.pop();
-                      pointersLen--;
-                      pointer = pointers[pointersLen];
-                      if (pointer.state === PARSER_STATES.ARRAY) {
-                        pointer.key += 1;
-                      } else {
-                        pointer.isKey = true;
-                      }
-                    }
-                    break;
-
-                  case "[":
-                    if (pointer.state === PARSER_STATES.ARRAY) {
-                      lineCounter += 1;
-                      setLine(pointersLen + extraPad, pointer.key, undefined);
-
-                      let newPointer = {
-                        key: 0,
-                        state: PARSER_STATES.ARRAY,
-                        isKey: false,
-                      };
-                      pointers.push(newPointer);
-                      pointersLen++;
-                      pointer = newPointer;
-
-                      lineCounter += 1;
-
-                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
-                    } else if (pointer.state === PARSER_STATES.NULL) {
-                      pointer.state = PARSER_STATES.ARRAY;
-                      pointer.isKey = false;
-                      pointer.key = 0;
-                      lineCounter += 2;
-
-                      setLine(
-                        pointersLen + extraPad,
-                        undefined,
-                        TOKEN_TYPES.LEFT_BRACKET,
-                      );
-                      extraPad = 1;
-                    } else {
-                      let newPointer = {
-                        key: 0,
-                        state: PARSER_STATES.ARRAY,
-                        isKey: false,
-                      };
-                      pointers.push(newPointer);
-                      pointersLen++;
-                      pointer = newPointer;
-                      lineCounter += 1;
-
-                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
-                    }
-                    break;
-
-                  case "]":
-                    let isRoot = 0;
-                    if (pointersLen > 0) {
-                      pointers.pop();
-                      pointersLen--;
-                      pointer = pointers[pointersLen];
-                      if (pointer.state === PARSER_STATES.ARRAY) {
-                        pointer.key += 1;
-                      } else {
-                        pointer.isKey = true;
-                      }
-                    } else {
-                      isRoot = 1;
-                    }
-
-                    setLine(
-                      pointersLen + extraPad - isRoot,
-                      undefined,
-                      TOKEN_TYPES.RIGHT_BRACKET,
-                    );
+                  case '-':
+                  case '1':
+                  case '2':
+                  case '3':
+                  case '4':
+                  case '5':
+                  case '6':
+                  case '7':
+                  case '8':
+                  case '9':
+                    stackReplace(STATES.NUMBER_INTEGER);
                     break;
 
                   // true
-                  case "t":
-                    lexerState = LEXER_STATES.TRUE_T;
-                    subStart = i;
-                    break;
+                  case 't':
+                    stackReplace(STATES.TRUE_T);
+                    break
 
                   // false
-                  case "f":
-                    lexerState = LEXER_STATES.FALSE_F;
-                    subStart = i;
-                    break;
+                  case 'f':
+                    stackReplace(STATES.FALSE_F);
+                    break
 
                   // null
-                  case "n":
-                    lexerState = LEXER_STATES.NULL_N;
-                    subStart = i;
-                    break;
+                  case 'n':
+                    stackReplace(STATES.NULL_N);
+                    break
 
-                  // character not recognized
+                  // array
+                  case '[':
+                    stackReplace(STATES.ARRAY);
+                    break
+
+                  // object
+                  case '{':
+                    stackReplace(STATES.OBJECT_KEY);
+                    break
+                    
                   default:
                     invalidateFile(char, i);
+                    break scanner;
                 }
                 break;
 
-              case LEXER_STATES.STRING:
-                if (char !== '"') {
-                  if (char === "\\") {
-                    lexerState = LEXER_STATES.STRING_ESCAPING;
-                  }
+              case STATES.STRING:
+                switch(char) {
+                  case '"':
+                    stackPop();
+                    // STRING FOUND
+                    break;
+                  case '\\':
+                    stackReplace(STATES.STRING_ESCAPING);
+                    break;
+                  default:
+                    //do nothing
+                    break;
+                }
+                break;
+
+              case STATES.STRING_ESCAPING:
+                switch(char) {
+                  case '"':
+                  case '\\':
+                  case '/':
+                  case 'b':
+                  case 'f':
+                  case 'n':
+                  case 'r':
+                  case 't':
+                    stackReplace(STATES.STRING);
+                  case 'u':
+                    stackReplace(STATES.STRING_UNICODE_1)
+                  default:
+                    invalidateFile(char, i);
+                    break scanner;
+                    break;
+                }
+                break;
+
+              case STATES.STRING_UNICODE_1:
+                // is char hex?
+                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
+                  stackReplace(STATES.STRING_UNICODE_2)
                 } else {
-                  if (pointer.state === PARSER_STATES.OBJECT && pointer.isKey) {
-                    pointer.key = input.substring(subStart, i);
-                    pointer.isKey = false;
-                    lineCounter += 1;
-
-                    setLine(pointersLen + extraPad, pointer.key, undefined);
-                  } else {
-                    if (pointer.state === PARSER_STATES.ARRAY) {
-                      lineCounter += 1;
-                      setLine(pointersLen + extraPad, pointer.key, undefined);
-                      pointer.key++;
-                    } 
-                    pointer.isKey = true;
-
-                    ind = pads.length - 1;
-                    values[ind] = input.substring(subStart, i);
-                  }
-
-                  lexerState = LEXER_STATES.NORMAL;
+                  invalidateFile(c, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.NUMBER:
-                if (char !== "." && (char < "0" || char > "9")) {
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key++;
-                    lineCounter += 1;
-                    setLine(pointersLen + extraPad, pointer.key, undefined);
-                  } else {
-                    pointer.isKey = true;
-                  }
+              case STATES.STRING_UNICODE_2:
+                // is char hex?
+                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
+                  stackReplace(STATES.STRING_UNICODE_3)
+                } else {
+                  invalidateFile(c, i);
+                  break scanner;
+                }
+                break;
 
-                  ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
+              case STATES.STRING_UNICODE_3:
+                // is char hex?
+                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
+                  stackReplace(STATES.STRING_UNICODE_4)
+                } else {
+                  invalidateFile(c, i);
+                  break scanner;
+                }
+                break;
 
-                  lexerState = LEXER_STATES.NORMAL;
-                  // after number end, go back 1 char
+              case STATES.STRING_UNICODE_4:
+                // is char hex?
+                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
+                  stackReplace(STATES.STRING)
+                } else {
+                  invalidateFile(c, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.NUMBER_ZERO:
+                if (char === '.') {
+                  stackReplace(STATES.NUMBER_FRACTION)
+                } else if(char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
+                } else {
+                  // Number Found
+                  stackPop();
+                  // backtrack
                   i--;
                 }
                 break;
 
-              case LEXER_STATES.TRUE_T:
-                if (char === "r") {
-                  lexerState = LEXER_STATES.TRUE_R;
+              case STATES.NUMBER_INTEGER:
+                if (char === '.') {
+                  stackReplace(STATES.NUMBER_FRACTION)
+                } else if(char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
+                } else if(char >= "0" && char <= "9") {
+                  // do nothing;
                 } else {
-                  invalidateFile(char, i);
+                  // Number Found
+                  stackPop();
+                  // backtrack
+                  i--;
                 }
                 break;
 
-              case LEXER_STATES.TRUE_R:
-                if (char === "u") {
-                  lexerState = LEXER_STATES.TRUE_U;
+              case STATES.NUMBER_FRACTION:
+                if(char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
+                } else if(char >= "0" && char <= "9") {
+                  // do nothing;
                 } else {
-                  invalidateFile(char, i);
+                  // Number Found
+                  stackPop();
+                  // backtrack
+                  i--;
                 }
                 break;
 
-              case LEXER_STATES.TRUE_U:
-                if (char === "e") {
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key++;
-                    lineCounter += 1;
-                    setLine(pointersLen + extraPad, pointer.key, undefined);
-                  } else {
-                    pointer.isKey = true;
-                  }
-
-                  values[pads.length-1] = true;
-                  lexerState = LEXER_STATES.NORMAL;
+              case STATES.NUMBER_EXPONENTIAL_INIT:
+                if(char === "-" || char === "+" || char === "-" || (char >= "0" && char <= "9")) {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL)
+                  // do nothing;
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.FALSE_F:
-                if (char === "a") {
-                  lexerState = LEXER_STATES.FALSE_A;
+              case STATES.NUMBER_EXPONENTIAL:
+                if(char >= "0" && char <= "9") {
+                  // do nothing;
                 } else {
-                  invalidateFile(char, i);
+                  // Number Found
+                  stackPop();
+                  // backtrack
+                  i--;
                 }
                 break;
 
-              case LEXER_STATES.FALSE_A:
-                if (char === "l") {
-                  lexerState = LEXER_STATES.FALSE_L;
+              case STATES.TRUE_T:
+                if(char === "r") {
+                  stackReplace(STATES.TRUE_R)
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.FALSE_L:
-                if (char === "s") {
-                  lexerState = LEXER_STATES.FALSE_S;
+              case STATES.TRUE_R:
+                if(char === "u") {
+                  stackReplace(STATES.TRUE_U)
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.FALSE_S:
-                if (char === "e") {
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key++;
-                    lineCounter += 1;
-                    setLine(pointersLen + extraPad, pointer.key, undefined);
-                  } else {
-                    pointer.isKey = true;
-                  }
-
-                  values[pads.length-1] = false;
-                  lexerState = LEXER_STATES.NORMAL;
+              case STATES.TRUE_U:
+                if(char === "e") {
+                  stackPop();
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.NULL_N:
-                if (char === "u") {
-                  lexerState = LEXER_STATES.NULL_U;
+              case STATES.FALSE_F:
+                if(char === "a") {
+                  stackReplace(STATES.FALSE_A)
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.NULL_U:
-                if (char === "l") {
-                  lexerState = LEXER_STATES.NULL_L1;
+              case STATES.FALSE_A:
+                if(char === "l") {
+                  stackReplace(STATES.FALSE_L)
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.NULL_L1:
-                if (char === "l") {
-                  if (pointer.state === PARSER_STATES.ARRAY) {
-                    pointer.key++;
-                    lineCounter += 1;
-                    setLine(pointersLen + extraPad, pointer.key, undefined);
-                  } else {
-                    pointer.isKey = true;
-                  }
-
-                  values[pads.length-1] = null;
-                  lexerState = LEXER_STATES.NORMAL;
+              case STATES.FALSE_L:
+                if(char === "s") {
+                  stackReplace(STATES.FALSE_S)
                 } else {
                   invalidateFile(char, i);
+                  break scanner;
                 }
                 break;
 
-              case LEXER_STATES.STRING_ESCAPING:
-                lexerState = LEXER_STATES.STRING;
+              case STATES.FALSE_S:
+                if(char === "e") {
+                  stackPop();
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
                 break;
+
+              case STATES.NULL_N:
+                if(char === "u") {
+                  stackReplace(STATES.NULL_U)
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.NULL_U:
+                if(char === "l") {
+                  stackReplace(STATES.NULL_L)
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.NULL_L:
+                if(char === "l") {
+                  stackPop();
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.ARRAY:
+                if(char === "]") {
+                  stackPop();
+                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else {
+                  stackPop();
+                  stackPush(STATES.ARRAY_MORE);
+                  stackPush(STATES.VALUE);
+                  // backtrack
+                  i--;
+                }
+                break;
+
+              case STATES.ARRAY_MORE:
+                if(char === "]") {
+                  stackPop();
+                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else if(char === ",") {
+                  stackPop();
+                  stackPush(STATES.ARRAY_MORE);
+                  stackPush(STATES.WHITESPACE_VALUE);
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.OBJECT_KEY:
+                if(char === "}") {
+                  stackPop();
+                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else if (char === '"') {
+                  stackPop();
+                  stackPush(STATES.OBJECT_MORE);
+                  stackPush(STATES.WHITESPACE_VALUE);
+                  stackPush(STATES.OBJECT_COLON);
+                  stackPush(STATES.STRING);
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.OBJECT_COLON:
+                if (char === ':') {
+                  stackPop()
+                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.OBJECT_MORE:
+                if(char === "}") {
+                  stackPop();
+                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else if(char === ",") {
+                  stackPop();
+                  stackPush(STATES.OBJECT_KEY);
+                } else {
+                  invalidateFile(char, i);
+                  break scanner;
+                }
+                break;
+
+              case STATES.WHITESPACE_VALUE:
+                if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else {
+                  stackReplace(STATES.VALUE);
+                  // backtrack
+                  i--;
+                }
+                break;
+
+              default:
+                // unkown state
+                if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                  // ignore whitespace
+                } else {
+                  invalidateFile();
+                }
             }
 
-            ++i;
+            i++;
           }
+
+          if (result.done) {
+            done = true;
+            performance.measure("fileRead", "fileRead");
+            return;
+          }
+
+          if (done && stateStack.length) {
+            invalidateFile(char, i);
+          }
+
           performance.measure("lexer_parser", "lexer_parser");
 
           oldCounter = lineCounter;
