@@ -200,46 +200,46 @@
         LEFT_BRACKET: Symbol(),
         RIGHT_BRACKET: Symbol(),
       };
-      
+
       const GRAMMAR = {
         DOUBLE_QUOTES: '"',
-        _0: '0',
-        _1: '1',
-        _2: '2',
-        _3: '3',
-        _4: '4',
-        _5: '5',
-        _6: '6',
-        _7: '7',
-        _8: '8',
-        _9: '9',
-        MINUS: '-',
-        PLUS: '+',
-        OPEN_BRACKET: '[',
-        CLOSE_BRACKET: ']',
-        OPEN_BRACE: '{',
-        CLOSE_BRACE: '}',
-        BACKSLASH: '\\',
-        a: 'a',
-        e: 'e',
-        f: 'f',
-        l: 'l',
-        n: 'n',
-        s: 's',
-        t: 't',
-        r: 'r',
-        u: 'u',
-        A: 'A',
-        F: 'F',
-        E: 'E',
-        DOT: '.',
-        EMPTY_SPACE: ' ',
-        TAB: '\t',
-        CARRIAGE_RETURN: '\r',
-        NEW_LINE: '\n',
-        COLON: ':',
-        COMMA: ',',
-      }
+        _0: "0",
+        _1: "1",
+        _2: "2",
+        _3: "3",
+        _4: "4",
+        _5: "5",
+        _6: "6",
+        _7: "7",
+        _8: "8",
+        _9: "9",
+        MINUS: "-",
+        PLUS: "+",
+        OPEN_BRACKET: "[",
+        CLOSE_BRACKET: "]",
+        OPEN_BRACE: "{",
+        CLOSE_BRACE: "}",
+        BACKSLASH: "\\",
+        a: "a",
+        e: "e",
+        f: "f",
+        l: "l",
+        n: "n",
+        s: "s",
+        t: "t",
+        r: "r",
+        u: "u",
+        A: "A",
+        F: "F",
+        E: "E",
+        DOT: ".",
+        EMPTY_SPACE: " ",
+        TAB: "\t",
+        CARRIAGE_RETURN: "\r",
+        NEW_LINE: "\n",
+        COLON: ":",
+        COMMA: ",",
+      };
 
       const STATES = {
         VALUE: Symbol("VALUE"),
@@ -653,7 +653,7 @@
                   // Number Found
                   stackPop();
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
@@ -673,7 +673,7 @@
                   // Number Found
                   stackPop();
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
@@ -691,7 +691,7 @@
                   // Number Found
                   stackPop();
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
@@ -720,7 +720,7 @@
                   // Number Found
                   stackPop();
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
@@ -854,7 +854,7 @@
                   stackPush(STATES.ARRAY_MORE);
                   stackPush(STATES.VALUE);
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
@@ -957,7 +957,7 @@
                 } else {
                   stackReplace(STATES.VALUE);
                   // backtrack
-                  i--;
+                  continue;
                 }
                 break;
 
