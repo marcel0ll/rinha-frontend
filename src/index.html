@@ -8,7 +8,7 @@
       }
 
       button {
-        background: linear-gradient(to bottom, #E4E4E4, #F7F7F7);
+        background: linear-gradient(to bottom, #e4e4e4, #f7f7f7);
         border-radius: 5px;
         border: 1px solid #000000;
       }
@@ -53,7 +53,7 @@
 
       #alert {
         display: none;
-        color: #bf0e0e; 
+        color: #bf0e0e;
       }
 
       #canvas {
@@ -62,10 +62,10 @@
       }
 
       #title {
-        display: flex; 
+        display: flex;
         justify-content: space-between;
-        height: 74px; 
-        padding-top: 24px; 
+        height: 74px;
+        padding-top: 24px;
         padding-bottom: 10px;
         position: sticky;
         top: 0;
@@ -73,7 +73,10 @@
         background: white;
         font-size: 32px;
         align-items: center;
-        transition: height 1s, font-size 1s, padding 1s;
+        transition:
+          height 1s,
+          font-size 1s,
+          padding 1s;
       }
 
       #title.animate {
@@ -146,7 +149,6 @@
         font-weight: 400;
       }
 
-
       #back {
         aspect-ratio: 1;
       }
@@ -172,7 +174,7 @@
     <section id="menu">
       <h1>JSON Tree Viewer</h1>
       <h2>
-        Simple JSON Viewer that runs completely on-client. No data exchange 
+        Simple JSON Viewer that runs completely on-client. No data exchange
       </h2>
       <input
         type="file"
@@ -181,9 +183,7 @@
         style="display: none"
       />
       <button id="fileSelect" type="button">Load JSON</button>
-      <p id="alert">
-        Invalid file. Please load a valid JSON file.
-      </p>
+      <p id="alert">Invalid file. Please load a valid JSON file.</p>
     </section>
     <section id="viewer" style="display: none">
       <div id="title" class="">
@@ -198,7 +198,7 @@
       const TOKEN_TYPES = {
         LEFT_BRACKET: Symbol(),
         RIGHT_BRACKET: Symbol(),
-      }
+      };
 
       const STATES = {
         VALUE: Symbol("VALUE"),
@@ -229,7 +229,7 @@
         OBJECT_KEY: Symbol("OBJECT_KEY"),
         OBJECT_COLON: Symbol("OBJECT_COLON"),
         OBJECT_MORE: Symbol("OBJECT_MORE"),
-      }
+      };
 
       // elements
       const back = document.getElementById("back");
@@ -315,15 +315,15 @@
       back.onclick = () => {
         menu.style.display = "block";
         viewer.style.display = "none";
-        canvas.innerHTML = '';
-      }
+        canvas.innerHTML = "";
+      };
 
       function invalidateFile(char, i, message) {
         done = true;
         menu.style.display = "block";
         viewer.style.display = "none";
         alert.style.display = "block";
-        canvas.innerHTML = '';
+        canvas.innerHTML = "";
         if (message) {
           console.error(message, char, i);
         }
@@ -356,7 +356,7 @@
         padCounter = 0;
 
         function stackReplace(newState) {
-          stateStack.pop()
+          stateStack.pop();
           stateStack.push(newState);
           state = newState;
         }
@@ -367,7 +367,7 @@
         }
 
         function stackPop() {
-          stateStack.pop()
+          stateStack.pop();
           if (stateStack.length) {
             state = stateStack[stateStack.length - 1];
           } else {
@@ -377,7 +377,7 @@
 
         function isInsideArray() {
           let i = stateStack.length - 1;
-          while(i > 0) {
+          while (i > 0) {
             let st = stateStack[i];
             if (st === STATES.ARRAY || st === STATES.ARRAY_MORE) {
               return true;
@@ -389,7 +389,7 @@
 
         function isInsideObject() {
           let i = stateStack.length - 1;
-          while(i > 0) {
+          while (i > 0) {
             let st = stateStack[i];
             if (st === STATES.OBJECT || st === STATES.OBJECT_MORE) {
               return true;
@@ -411,7 +411,7 @@
         viewer.style.display = "block";
         menu.style.display = "none";
 
-        parsedChars = 0
+        parsedChars = 0;
         async function seek() {
           performance.mark("read");
 
@@ -437,81 +437,85 @@
             // console.log(stateStack);
             // console.log(char, state);
 
-            switch(state) {
+            switch (state) {
               case STATES.VALUE:
-                switch(char) {
+                switch (char) {
                   case '"':
                     stackReplace(STATES.STRING);
                     subStart = i + 1;
                     break;
 
                   // NUMBERS
-                  case '0':
+                  case "0":
                     stackReplace(STATES.NUMBER_ZERO);
                     subStart = i;
                     break;
-                  case '-':
-                  case '1':
-                  case '2':
-                  case '3':
-                  case '4':
-                  case '5':
-                  case '6':
-                  case '7':
-                  case '8':
-                  case '9':
+                  case "-":
+                  case "1":
+                  case "2":
+                  case "3":
+                  case "4":
+                  case "5":
+                  case "6":
+                  case "7":
+                  case "8":
+                  case "9":
                     stackReplace(STATES.NUMBER_INTEGER);
                     subStart = i;
                     break;
 
                   // true
-                  case 't':
+                  case "t":
                     stackReplace(STATES.TRUE_T);
-                    break
+                    break;
 
                   // false
-                  case 'f':
+                  case "f":
                     stackReplace(STATES.FALSE_F);
-                    break
+                    break;
 
                   // null
-                  case 'n':
+                  case "n":
                     stackReplace(STATES.NULL_N);
-                    break
+                    break;
 
                   // array
-                  case '[':
+                  case "[":
                     if (currentContext?.type === "ARRAY") {
-                      setLine(padCounter, currentContext.key, TOKEN_TYPES.LEFT_BRACKET);
+                      setLine(
+                        padCounter,
+                        currentContext.key,
+                        TOKEN_TYPES.LEFT_BRACKET,
+                      );
                     } else if (currentContext === null) {
                       setLine(padCounter, undefined, TOKEN_TYPES.LEFT_BRACKET);
                     } else {
-                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
+                      values[pads.length - 1] = TOKEN_TYPES.LEFT_BRACKET;
                     }
 
                     padCounter++;
-                    contextStack.push({type: "ARRAY", key: 0})
-                    currentContext = contextStack[contextStack.length -1];
+                    contextStack.push({ type: "ARRAY", key: 0 });
+                    currentContext = contextStack[contextStack.length - 1];
 
                     stackReplace(STATES.ARRAY);
-                    break
+                    break;
 
                   // object
-                  case '{':
+                  case "{":
                     if (currentContext?.type === "ARRAY") {
                       setLine(padCounter, currentContext.key, undefined);
                       currentContext.key++;
                     } else if (currentContext === null) {
                       padCounter--;
-                    } 
+                    }
 
-                    contextStack.push({type: "OBJECT", key: null})
+                    contextStack.push({ type: "OBJECT", key: null });
                     padCounter++;
-                    currentContext = contextStack[contextStack.length -1];
+                    currentContext = contextStack[contextStack.length - 1];
 
                     stackReplace(STATES.OBJECT_KEY);
-                    break
-                    
+                    break;
+
                   default:
                     invalidateFile(char, i);
                     break scanner;
@@ -519,24 +523,26 @@
                 break;
 
               case STATES.STRING:
-                switch(char) {
+                switch (char) {
                   case '"':
-                    if (stateStack[stateStack.length - 2] === STATES.OBJECT_COLON) {
+                    if (
+                      stateStack[stateStack.length - 2] === STATES.OBJECT_COLON
+                    ) {
                       currentContext.key = input.substring(subStart, i);
                       setLine(padCounter, currentContext.key, undefined);
                     } else {
                       if (currentContext?.type === "ARRAY") {
                         setLine(padCounter, currentContext.key, undefined);
                         currentContext.key++;
-                      } 
+                      }
 
                       ind = pads.length - 1;
-                      values[ind] = input.substring(subStart, i)
+                      values[ind] = input.substring(subStart, i);
                     }
                     stackPop();
                     // STRING FOUND
                     break;
-                  case '\\':
+                  case "\\":
                     stackReplace(STATES.STRING_ESCAPING);
                     break;
                   default:
@@ -546,7 +552,7 @@
                 break;
 
               case STATES.STRING_ESCAPING:
-                switch(char) {
+                switch (char) {
                   // JSON SPEC
                   // case '"':
                   // case '\\':
@@ -558,8 +564,8 @@
                   // case 't':
                   //   stackReplace(STATES.STRING);
                   //   break;
-                  case 'u':
-                    stackReplace(STATES.STRING_UNICODE_1)
+                  case "u":
+                    stackReplace(STATES.STRING_UNICODE_1);
                     break;
                   default:
                     //JSON SPEC
@@ -574,8 +580,12 @@
 
               case STATES.STRING_UNICODE_1:
                 // is char hex?
-                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
-                  stackReplace(STATES.STRING_UNICODE_2)
+                if (
+                  (char >= "0" && char <= "9") ||
+                  (char >= "a" && char <= "f") ||
+                  (char >= "A" && char <= "F")
+                ) {
+                  stackReplace(STATES.STRING_UNICODE_2);
                 } else {
                   invalidateFile(c, i);
                   break scanner;
@@ -584,8 +594,12 @@
 
               case STATES.STRING_UNICODE_2:
                 // is char hex?
-                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
-                  stackReplace(STATES.STRING_UNICODE_3)
+                if (
+                  (char >= "0" && char <= "9") ||
+                  (char >= "a" && char <= "f") ||
+                  (char >= "A" && char <= "F")
+                ) {
+                  stackReplace(STATES.STRING_UNICODE_3);
                 } else {
                   invalidateFile(c, i);
                   break scanner;
@@ -594,8 +608,12 @@
 
               case STATES.STRING_UNICODE_3:
                 // is char hex?
-                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
-                  stackReplace(STATES.STRING_UNICODE_4)
+                if (
+                  (char >= "0" && char <= "9") ||
+                  (char >= "a" && char <= "f") ||
+                  (char >= "A" && char <= "F")
+                ) {
+                  stackReplace(STATES.STRING_UNICODE_4);
                 } else {
                   invalidateFile(c, i);
                   break scanner;
@@ -604,8 +622,12 @@
 
               case STATES.STRING_UNICODE_4:
                 // is char hex?
-                if ((char >= "0" && char <= "9") || (char >= "a" && char <= "f") || (char >= "A" && char <= "F")) {
-                  stackReplace(STATES.STRING)
+                if (
+                  (char >= "0" && char <= "9") ||
+                  (char >= "a" && char <= "f") ||
+                  (char >= "A" && char <= "F")
+                ) {
+                  stackReplace(STATES.STRING);
                 } else {
                   invalidateFile(c, i);
                   break scanner;
@@ -613,18 +635,18 @@
                 break;
 
               case STATES.NUMBER_ZERO:
-                if (char === '.') {
-                  stackReplace(STATES.NUMBER_FRACTION)
-                } else if(char === "e" || char === "E") {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
+                if (char === ".") {
+                  stackReplace(STATES.NUMBER_FRACTION);
+                } else if (char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
                 } else {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i)
+                  values[ind] = +input.substring(subStart, i);
                   // Number Found
                   stackPop();
                   // backtrack
@@ -633,20 +655,20 @@
                 break;
 
               case STATES.NUMBER_INTEGER:
-                if (char === '.') {
-                  stackReplace(STATES.NUMBER_FRACTION)
-                } else if(char === "e" || char === "E") {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
-                } else if(char >= "0" && char <= "9") {
+                if (char === ".") {
+                  stackReplace(STATES.NUMBER_FRACTION);
+                } else if (char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
+                } else if (char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i)
+                  values[ind] = +input.substring(subStart, i);
                   // Number Found
                   stackPop();
                   // backtrack
@@ -655,20 +677,20 @@
                 break;
 
               case STATES.NUMBER_FRACTION:
-                if(char === "e" || char === "E") {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
-                } else if(char >= "0" && char <= "9") {
+                if (char === "e" || char === "E") {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
+                } else if (char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   // console.log("sub", input.substring(subStart, i));
                   // console.log(pads, keys, values);
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i)
+                  values[ind] = +input.substring(subStart, i);
                   // Number Found
                   stackPop();
                   // backtrack
@@ -677,8 +699,13 @@
                 break;
 
               case STATES.NUMBER_EXPONENTIAL_INIT:
-                if(char === "-" || char === "+" || char === "-" || (char >= "0" && char <= "9")) {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL)
+                if (
+                  char === "-" ||
+                  char === "+" ||
+                  char === "-" ||
+                  (char >= "0" && char <= "9")
+                ) {
+                  stackReplace(STATES.NUMBER_EXPONENTIAL);
                   // do nothing;
                 } else {
                   invalidateFile(char, i);
@@ -687,16 +714,16 @@
                 break;
 
               case STATES.NUMBER_EXPONENTIAL:
-                if(char >= "0" && char <= "9") {
+                if (char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i)
+                  values[ind] = +input.substring(subStart, i);
                   // Number Found
                   stackPop();
                   // backtrack
@@ -705,8 +732,8 @@
                 break;
 
               case STATES.TRUE_T:
-                if(char === "r") {
-                  stackReplace(STATES.TRUE_R)
+                if (char === "r") {
+                  stackReplace(STATES.TRUE_R);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -714,8 +741,8 @@
                 break;
 
               case STATES.TRUE_R:
-                if(char === "u") {
-                  stackReplace(STATES.TRUE_U)
+                if (char === "u") {
+                  stackReplace(STATES.TRUE_U);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -723,11 +750,11 @@
                 break;
 
               case STATES.TRUE_U:
-                if(char === "e") {
+                if (char === "e") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
                   values[ind] = true;
@@ -739,8 +766,8 @@
                 break;
 
               case STATES.FALSE_F:
-                if(char === "a") {
-                  stackReplace(STATES.FALSE_A)
+                if (char === "a") {
+                  stackReplace(STATES.FALSE_A);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -748,8 +775,8 @@
                 break;
 
               case STATES.FALSE_A:
-                if(char === "l") {
-                  stackReplace(STATES.FALSE_L)
+                if (char === "l") {
+                  stackReplace(STATES.FALSE_L);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -757,8 +784,8 @@
                 break;
 
               case STATES.FALSE_L:
-                if(char === "s") {
-                  stackReplace(STATES.FALSE_S)
+                if (char === "s") {
+                  stackReplace(STATES.FALSE_S);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -766,11 +793,11 @@
                 break;
 
               case STATES.FALSE_S:
-                if(char === "e") {
+                if (char === "e") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
                   values[ind] = false;
@@ -782,8 +809,8 @@
                 break;
 
               case STATES.NULL_N:
-                if(char === "u") {
-                  stackReplace(STATES.NULL_U)
+                if (char === "u") {
+                  stackReplace(STATES.NULL_U);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -791,8 +818,8 @@
                 break;
 
               case STATES.NULL_U:
-                if(char === "l") {
-                  stackReplace(STATES.NULL_L)
+                if (char === "l") {
+                  stackReplace(STATES.NULL_L);
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -800,11 +827,11 @@
                 break;
 
               case STATES.NULL_L:
-                if(char === "l") {
+                if (char === "l") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
-                  } 
+                  }
 
                   ind = pads.length - 1;
                   values[ind] = null;
@@ -816,13 +843,18 @@
                 break;
 
               case STATES.ARRAY:
-                if(char === "]") {
+                if (char === "]") {
                   padCounter--;
                   contextStack.pop();
-                  currentContext = contextStack[contextStack.length -1];
+                  currentContext = contextStack[contextStack.length - 1];
                   setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
-                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                } else if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
                 } else {
                   stackPop();
@@ -834,15 +866,20 @@
                 break;
 
               case STATES.ARRAY_MORE:
-                if(char === "]") {
+                if (char === "]") {
                   padCounter--;
                   contextStack.pop();
-                  currentContext = contextStack[contextStack.length -1];
+                  currentContext = contextStack[contextStack.length - 1];
                   setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
-                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                } else if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
-                } else if(char === ",") {
+                } else if (char === ",") {
                   stackPop();
                   stackPush(STATES.ARRAY_MORE);
                   stackPush(STATES.WHITESPACE_VALUE);
@@ -853,12 +890,17 @@
                 break;
 
               case STATES.OBJECT_KEY:
-                if(char === "}") {
+                if (char === "}") {
                   padCounter--;
                   contextStack.pop();
-                  currentContext = contextStack[contextStack.length -1];
+                  currentContext = contextStack[contextStack.length - 1];
                   stackPop();
-                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                } else if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
                 } else if (char === '"') {
                   subStart = i + 1;
@@ -874,9 +916,14 @@
                 break;
 
               case STATES.OBJECT_COLON:
-                if (char === ':') {
-                  stackPop()
-                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                if (char === ":") {
+                  stackPop();
+                } else if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
                 } else {
                   invalidateFile(char, i);
@@ -885,14 +932,19 @@
                 break;
 
               case STATES.OBJECT_MORE:
-                if(char === "}") {
+                if (char === "}") {
                   padCounter--;
                   contextStack.pop();
-                  currentContext = contextStack[contextStack.length -1];
+                  currentContext = contextStack[contextStack.length - 1];
                   stackPop();
-                } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                } else if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
-                } else if(char === ",") {
+                } else if (char === ",") {
                   stackPop();
                   stackPush(STATES.OBJECT_KEY);
                 } else {
@@ -902,7 +954,12 @@
                 break;
 
               case STATES.WHITESPACE_VALUE:
-                if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
                 } else {
                   stackReplace(STATES.VALUE);
@@ -913,7 +970,12 @@
 
               default:
                 // unkown state
-                if(char === " " || char === "\t" || char === "\r" || char === "\n") {
+                if (
+                  char === " " ||
+                  char === "\t" ||
+                  char === "\r" ||
+                  char === "\n"
+                ) {
                   // ignore whitespace
                 } else {
                   invalidateFile();
