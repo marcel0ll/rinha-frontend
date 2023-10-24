@@ -296,14 +296,12 @@
       let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
       let file;
-      let filePageLength;
 
       let buffer = new ArrayBuffer(CHUNK_SIZE);
       let reader;
 
       // read + decode
       let decoder = new TextDecoder("utf-8");
-      let done;
       let readPages;
       let input;
 
@@ -361,7 +359,6 @@
       };
 
       function invalidateFile(char, i, message) {
-        done = true;
         menu.style.display = "block";
         viewer.style.display = "none";
         alert.style.display = "block";
@@ -380,10 +377,8 @@
         file = fileInput.files[0];
         reader = file.stream().getReader({ mode: "byob" });
         fileName.innerText = file.name;
-        filePageLength = Math.ceil(file.size / CHUNK_SIZE);
 
-        // read + decode
-        done = false;
+        // read
         readPages = 0;
 
         // parser
@@ -428,10 +423,7 @@
           result = await reader.read(new Uint8Array(buffer));
 
           buffer = result.value.buffer;
-          console.log(buffer);
-
           input = decoder.decode(result.value);
-          console.log(input)
 
           // lexer+parser
           i = 0;
@@ -694,8 +686,6 @@
                     currentContext.key++;
                   }
 
-                  // console.log("sub", input.substring(subStart, i));
-                  // console.log(pads, keys, values);
                   ind = pads.length - 1;
                   values[ind] = +input.substring(subStart, i);
                   // Number Found
