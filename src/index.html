@@ -194,9 +194,10 @@
     </section>
     <script>
       const CHUNK_SIZE = 0x200000;
+      // const CHUNK_SIZE = 0x100;
       const TOKEN_TYPES = {
-        LEFT_BRACE: Symbol(),
-        RIGHT_BRACE: Symbol(),
+        LEFT_BRACKET: Symbol(),
+        RIGHT_BRACKET: Symbol(),
       }
 
       const STATES = {
@@ -253,8 +254,6 @@
       let values = [];
       let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
-      //
-
       let file;
       let filePageLength;
 
@@ -279,6 +278,9 @@
       let extraPad;
 
       let oldCounter;
+
+      let padCounter;
+      let key = 0;
 
       // html
 
@@ -348,7 +350,10 @@
         values = [];
 
         stateStack = [STATES.VALUE];
+        contextStack = [];
+        currentContext = null;
         state = STATES.VALUE;
+        padCounter = 0;
 
         function stackReplace(newState) {
           stateStack.pop()
@@ -368,6 +373,30 @@
           } else {
             state = null;
           }
+        }
+
+        function isInsideArray() {
+          let i = stateStack.length - 1;
+          while(i > 0) {
+            let st = stateStack[i];
+            if (st === STATES.ARRAY || st === STATES.ARRAY_MORE) {
+              return true;
+            }
+            i--;
+          }
+          return false;
+        }
+
+        function isInsideObject() {
+          let i = stateStack.length - 1;
+          while(i > 0) {
+            let st = stateStack[i];
+            if (st === STATES.OBJECT || st === STATES.OBJECT_MORE) {
+              return true;
+            }
+            i--;
+          }
+          return false;
         }
 
         pointersLen = 0;
@@ -413,11 +442,13 @@
                 switch(char) {
                   case '"':
                     stackReplace(STATES.STRING);
+                    subStart = i + 1;
                     break;
 
                   // NUMBERS
                   case '0':
                     stackReplace(STATES.NUMBER_ZERO);
+                    subStart = i;
                     break;
                   case '-':
                   case '1':
@@ -430,6 +461,7 @@
                   case '8':
                   case '9':
                     stackReplace(STATES.NUMBER_INTEGER);
+                    subStart = i;
                     break;
 
                   // true
@@ -449,11 +481,34 @@
 
                   // array
                   case '[':
+                    if (currentContext?.type === "ARRAY") {
+                      setLine(padCounter, currentContext.key, TOKEN_TYPES.LEFT_BRACKET);
+                    } else if (currentContext === null) {
+                      setLine(padCounter, undefined, TOKEN_TYPES.LEFT_BRACKET);
+                    } else {
+                      values[pads.length-1] = TOKEN_TYPES.LEFT_BRACKET;
+                    }
+
+                    padCounter++;
+                    contextStack.push({type: "ARRAY", key: 0})
+                    currentContext = contextStack[contextStack.length -1];
+
                     stackReplace(STATES.ARRAY);
                     break
 
                   // object
                   case '{':
+                    if (currentContext?.type === "ARRAY") {
+                      setLine(padCounter, currentContext.key, undefined);
+                      currentContext.key++;
+                    } else if (currentContext === null) {
+                      padCounter--;
+                    } 
+
+                    contextStack.push({type: "OBJECT", key: null})
+                    padCounter++;
+                    currentContext = contextStack[contextStack.length -1];
+
                     stackReplace(STATES.OBJECT_KEY);
                     break
                     
@@ -466,6 +521,18 @@
               case STATES.STRING:
                 switch(char) {
                   case '"':
+                    if (stateStack[stateStack.length - 2] === STATES.OBJECT_COLON) {
+                      currentContext.key = input.substring(subStart, i);
+                      setLine(padCounter, currentContext.key, undefined);
+                    } else {
+                      if (currentContext?.type === "ARRAY") {
+                        setLine(padCounter, currentContext.key, undefined);
+                        currentContext.key++;
+                      } 
+
+                      ind = pads.length - 1;
+                      values[ind] = input.substring(subStart, i)
+                    }
                     stackPop();
                     // STRING FOUND
                     break;
@@ -480,22 +547,27 @@
 
               case STATES.STRING_ESCAPING:
                 switch(char) {
-                  case '"':
-                  case '\\':
-                  case '/':
-                  case 'b':
-                  case 'f':
-                  case 'n':
-                  case 'r':
-                  case 't':
-                    stackReplace(STATES.STRING);
-                    break;
+                  // JSON SPEC
+                  // case '"':
+                  // case '\\':
+                  // case '/':
+                  // case 'b':
+                  // case 'f':
+                  // case 'n':
+                  // case 'r':
+                  // case 't':
+                  //   stackReplace(STATES.STRING);
+                  //   break;
                   case 'u':
                     stackReplace(STATES.STRING_UNICODE_1)
                     break;
                   default:
-                    invalidateFile(char, i, "Escaping");
-                    break scanner;
+                    //JSON SPEC
+                    // invalidateFile(char, i, "Escaping");
+                    // break scanner;
+                    // NON SPEC
+                    stackReplace(STATES.STRING);
+
                     break;
                 }
                 break;
@@ -546,6 +618,13 @@
                 } else if(char === "e" || char === "E") {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT)
                 } else {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = +input.substring(subStart, i)
                   // Number Found
                   stackPop();
                   // backtrack
@@ -561,6 +640,13 @@
                 } else if(char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = +input.substring(subStart, i)
                   // Number Found
                   stackPop();
                   // backtrack
@@ -574,6 +660,15 @@
                 } else if(char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  // console.log("sub", input.substring(subStart, i));
+                  // console.log(pads, keys, values);
+                  ind = pads.length - 1;
+                  values[ind] = +input.substring(subStart, i)
                   // Number Found
                   stackPop();
                   // backtrack
@@ -595,6 +690,13 @@
                 if(char >= "0" && char <= "9") {
                   // do nothing;
                 } else {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = +input.substring(subStart, i)
                   // Number Found
                   stackPop();
                   // backtrack
@@ -622,6 +724,13 @@
 
               case STATES.TRUE_U:
                 if(char === "e") {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = true;
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -658,6 +767,13 @@
 
               case STATES.FALSE_S:
                 if(char === "e") {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = false;
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -685,6 +801,13 @@
 
               case STATES.NULL_L:
                 if(char === "l") {
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } 
+
+                  ind = pads.length - 1;
+                  values[ind] = null;
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -694,6 +817,10 @@
 
               case STATES.ARRAY:
                 if(char === "]") {
+                  padCounter--;
+                  contextStack.pop();
+                  currentContext = contextStack[contextStack.length -1];
+                  setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
                 } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
                   // ignore whitespace
@@ -708,6 +835,10 @@
 
               case STATES.ARRAY_MORE:
                 if(char === "]") {
+                  padCounter--;
+                  contextStack.pop();
+                  currentContext = contextStack[contextStack.length -1];
+                  setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
                 } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
                   // ignore whitespace
@@ -723,10 +854,14 @@
 
               case STATES.OBJECT_KEY:
                 if(char === "}") {
+                  padCounter--;
+                  contextStack.pop();
+                  currentContext = contextStack[contextStack.length -1];
                   stackPop();
                 } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
                   // ignore whitespace
                 } else if (char === '"') {
+                  subStart = i + 1;
                   stackPop();
                   stackPush(STATES.OBJECT_MORE);
                   stackPush(STATES.WHITESPACE_VALUE);
@@ -751,6 +886,9 @@
 
               case STATES.OBJECT_MORE:
                 if(char === "}") {
+                  padCounter--;
+                  contextStack.pop();
+                  currentContext = contextStack[contextStack.length -1];
                   stackPop();
                 } else if(char === " " || char === "\t" || char === "\r" || char === "\n") {
                   // ignore whitespace
@@ -788,6 +926,7 @@
           // console.log(parsedChars/file.size);
 
           if (parsedChars === file.size || result.done) {
+            // console.log(pads, keys, values);
             done = true;
             performance.measure("fileRead", "fileRead");
           }
@@ -798,6 +937,7 @@
 
           performance.measure("lexer_parser", "lexer_parser");
 
+          lineCounter = pads.length;
           oldCounter = lineCounter;
 
           // set height for virtual scroller
@@ -819,6 +959,7 @@
           vp = viewer.clientHeight;
           canvas.style.height = h;
         }
+        // console.log(pads, keys, values);
 
         await seek();
         renderFreshCanvas();
@@ -936,11 +1077,11 @@
       function onScroll() {
         var scrollTop = viewer.scrollTop;
 
-        if (scrollTop > 0) {
-          title.classList.add("animate");
-        } else {
-          title.classList.remove("animate");
-        }
+        // if (scrollTop > 0) {
+        //   title.classList.add("animate");
+        // } else {
+        //   title.classList.remove("animate");
+        // }
 
         if (Math.abs(scrollTop - prevScrollTop) > vp) {
           onJump();
