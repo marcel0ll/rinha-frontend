@@ -194,12 +194,52 @@
       <div id="canvas"></div>
     </section>
     <script>
-      const CHUNK_SIZE = 0x200000;
+      const CHUNK_SIZE = 0x100000;
       // const CHUNK_SIZE = 0x100;
       const TOKEN_TYPES = {
         LEFT_BRACKET: Symbol(),
         RIGHT_BRACKET: Symbol(),
       };
+      
+      const GRAMMAR = {
+        DOUBLE_QUOTES: '"',
+        _0: '0',
+        _1: '1',
+        _2: '2',
+        _3: '3',
+        _4: '4',
+        _5: '5',
+        _6: '6',
+        _7: '7',
+        _8: '8',
+        _9: '9',
+        MINUS: '-',
+        PLUS: '+',
+        OPEN_BRACKET: '[',
+        CLOSE_BRACKET: ']',
+        OPEN_BRACE: '{',
+        CLOSE_BRACE: '}',
+        BACKSLASH: '\\',
+        a: 'a',
+        e: 'e',
+        f: 'f',
+        l: 'l',
+        n: 'n',
+        s: 's',
+        t: 't',
+        r: 'r',
+        u: 'u',
+        A: 'A',
+        F: 'F',
+        E: 'E',
+        DOT: '.',
+        EMPTY_SPACE: ' ',
+        TAB: '\t',
+        CARRIAGE_RETURN: '\r',
+        NEW_LINE: '\n',
+        COLON: ':',
+        COMMA: ',',
+      }
 
       const STATES = {
         VALUE: Symbol("VALUE"),
@@ -282,6 +322,7 @@
       let padCounter;
       let key = 0;
       let keyMap;
+      let result;
 
       // html
 
@@ -370,11 +411,7 @@
 
         function stackPop() {
           stateStack.pop();
-          if (stateStack.length) {
-            state = stateStack[stateStack.length - 1];
-          } else {
-            state = null;
-          }
+          state = stateStack[stateStack.length - 1];
         }
 
         pointersLen = 0;
@@ -387,27 +424,22 @@
         viewer.style.display = "block";
         menu.style.display = "none";
 
-        parsedChars = 0;
         async function seek() {
-          performance.mark("read");
-
-          const result = await reader.read(new Uint8Array(buffer));
+          result = await reader.read(new Uint8Array(buffer));
 
           buffer = result.value.buffer;
+          console.log(buffer);
 
-          performance.measure("read", "read");
-          performance.mark("decode");
           input = decoder.decode(result.value);
-          performance.measure("decode", "decode");
+          console.log(input)
 
           // lexer+parser
           i = 0;
           let subStart;
-          performance.mark("lexer_parser");
           consumedValueIndex = 0;
           let inputLen = input.length;
 
-          scanner: while (i < inputLen && !done) {
+          scanner: while (i < inputLen) {
             char = input[i];
 
             // console.log(stateStack);
@@ -416,47 +448,47 @@
             switch (state) {
               case STATES.VALUE:
                 switch (char) {
-                  case '"':
+                  case GRAMMAR.DOUBLE_QUOTES:
                     stackReplace(STATES.STRING);
                     subStart = i + 1;
                     break;
 
                   // NUMBERS
-                  case "0":
+                  case GRAMMAR._0:
                     stackReplace(STATES.NUMBER_ZERO);
                     subStart = i;
                     break;
-                  case "-":
-                  case "1":
-                  case "2":
-                  case "3":
-                  case "4":
-                  case "5":
-                  case "6":
-                  case "7":
-                  case "8":
-                  case "9":
+                  case GRAMMAR.MINUS:
+                  case GRAMMAR._1:
+                  case GRAMMAR._2:
+                  case GRAMMAR._3:
+                  case GRAMMAR._4:
+                  case GRAMMAR._5:
+                  case GRAMMAR._6:
+                  case GRAMMAR._7:
+                  case GRAMMAR._8:
+                  case GRAMMAR._9:
                     stackReplace(STATES.NUMBER_INTEGER);
                     subStart = i;
                     break;
 
                   // true
-                  case "t":
+                  case GRAMMAR.t:
                     stackReplace(STATES.TRUE_T);
                     break;
 
                   // false
-                  case "f":
+                  case GRAMMAR.f:
                     stackReplace(STATES.FALSE_F);
                     break;
 
                   // null
-                  case "n":
+                  case GRAMMAR.n:
                     stackReplace(STATES.NULL_N);
                     break;
 
                   // array
-                  case "[":
+                  case GRAMMAR.OPEN_BRACKET:
                     if (currentContext?.type === "ARRAY") {
                       setLine(
                         padCounter,
@@ -477,7 +509,7 @@
                     break;
 
                   // object
-                  case "{":
+                  case GRAMMAR.OPEN_BRACE:
                     if (currentContext?.type === "ARRAY") {
                       setLine(padCounter, currentContext.key, undefined);
                       currentContext.key++;
@@ -500,7 +532,7 @@
 
               case STATES.STRING:
                 switch (char) {
-                  case '"':
+                  case GRAMMAR.DOUBLE_QUOTES:
                     let str = input.substring(subStart, i);
 
                     if (
@@ -511,8 +543,7 @@
                         key = new String(str);
                         keyMap.set(str, key);
                       }
-                      currentContext.key = key;
-                      setLine(padCounter, currentContext.key, undefined);
+                      setLine(padCounter, key, undefined);
                     } else {
                       if (currentContext?.type === "ARRAY") {
                         setLine(padCounter, currentContext.key, undefined);
@@ -525,7 +556,7 @@
                     stackPop();
                     // STRING FOUND
                     break;
-                  case "\\":
+                  case GRAMMAR.BACKSLASH:
                     stackReplace(STATES.STRING_ESCAPING);
                     break;
                 }
@@ -544,7 +575,7 @@
                   // case 't':
                   //   stackReplace(STATES.STRING);
                   //   break;
-                  case "u":
+                  case GRAMMAR.u:
                     stackReplace(STATES.STRING_UNICODE_1);
                     break;
                   default:
@@ -561,9 +592,9 @@
               case STATES.STRING_UNICODE_1:
                 // is char hex?
                 if (
-                  (char >= "0" && char <= "9") ||
-                  (char >= "a" && char <= "f") ||
-                  (char >= "A" && char <= "F")
+                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
                 ) {
                   stackReplace(STATES.STRING_UNICODE_2);
                 } else {
@@ -575,9 +606,9 @@
               case STATES.STRING_UNICODE_2:
                 // is char hex?
                 if (
-                  (char >= "0" && char <= "9") ||
-                  (char >= "a" && char <= "f") ||
-                  (char >= "A" && char <= "F")
+                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
                 ) {
                   stackReplace(STATES.STRING_UNICODE_3);
                 } else {
@@ -589,9 +620,9 @@
               case STATES.STRING_UNICODE_3:
                 // is char hex?
                 if (
-                  (char >= "0" && char <= "9") ||
-                  (char >= "a" && char <= "f") ||
-                  (char >= "A" && char <= "F")
+                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
                 ) {
                   stackReplace(STATES.STRING_UNICODE_4);
                 } else {
@@ -603,9 +634,9 @@
               case STATES.STRING_UNICODE_4:
                 // is char hex?
                 if (
-                  (char >= "0" && char <= "9") ||
-                  (char >= "a" && char <= "f") ||
-                  (char >= "A" && char <= "F")
+                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
                 ) {
                   stackReplace(STATES.STRING);
                 } else {
@@ -615,9 +646,9 @@
                 break;
 
               case STATES.NUMBER_ZERO:
-                if (char === ".") {
+                if (char === GRAMMAR.DOT) {
                   stackReplace(STATES.NUMBER_FRACTION);
-                } else if (char === "e" || char === "E") {
+                } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
                 } else {
                   if (currentContext?.type === "ARRAY") {
@@ -635,11 +666,11 @@
                 break;
 
               case STATES.NUMBER_INTEGER:
-                if (char === ".") {
+                if (char === GRAMMAR.DOT) {
                   stackReplace(STATES.NUMBER_FRACTION);
-                } else if (char === "e" || char === "E") {
+                } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char < "0" || char > "9") {
+                } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -655,9 +686,9 @@
                 break;
 
               case STATES.NUMBER_FRACTION:
-                if (char === "e" || char === "E") {
+                if (char === GRAMMAR.e || char === GRAMMAR.E) {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char < "0" || char > "9") {
+                } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -676,10 +707,9 @@
 
               case STATES.NUMBER_EXPONENTIAL_INIT:
                 if (
-                  char === "-" ||
-                  char === "+" ||
-                  char === "-" ||
-                  (char >= "0" && char <= "9")
+                  char === GRAMMAR.MINUS ||
+                  char === GRAMMAR.PLUS ||
+                  (char >= GRAMMAR._0 && char <= GRAMMAR._9)
                 ) {
                   stackReplace(STATES.NUMBER_EXPONENTIAL);
                 } else {
@@ -689,7 +719,7 @@
                 break;
 
               case STATES.NUMBER_EXPONENTIAL:
-                if (char < "0" || char > "9") {
+                if (char < GRAMMAR._0 || char > GRAMMAR._9) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -705,7 +735,7 @@
                 break;
 
               case STATES.TRUE_T:
-                if (char === "r") {
+                if (char === GRAMMAR.r) {
                   stackReplace(STATES.TRUE_R);
                 } else {
                   invalidateFile(char, i);
@@ -714,7 +744,7 @@
                 break;
 
               case STATES.TRUE_R:
-                if (char === "u") {
+                if (char === GRAMMAR.u) {
                   stackReplace(STATES.TRUE_U);
                 } else {
                   invalidateFile(char, i);
@@ -723,7 +753,7 @@
                 break;
 
               case STATES.TRUE_U:
-                if (char === "e") {
+                if (char === GRAMMAR.e) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -739,7 +769,7 @@
                 break;
 
               case STATES.FALSE_F:
-                if (char === "a") {
+                if (char === GRAMMAR.a) {
                   stackReplace(STATES.FALSE_A);
                 } else {
                   invalidateFile(char, i);
@@ -748,7 +778,7 @@
                 break;
 
               case STATES.FALSE_A:
-                if (char === "l") {
+                if (char === GRAMMAR.l) {
                   stackReplace(STATES.FALSE_L);
                 } else {
                   invalidateFile(char, i);
@@ -757,7 +787,7 @@
                 break;
 
               case STATES.FALSE_L:
-                if (char === "s") {
+                if (char === GRAMMAR.s) {
                   stackReplace(STATES.FALSE_S);
                 } else {
                   invalidateFile(char, i);
@@ -766,7 +796,7 @@
                 break;
 
               case STATES.FALSE_S:
-                if (char === "e") {
+                if (char === GRAMMAR.e) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -782,7 +812,7 @@
                 break;
 
               case STATES.NULL_N:
-                if (char === "u") {
+                if (char === GRAMMAR.u) {
                   stackReplace(STATES.NULL_U);
                 } else {
                   invalidateFile(char, i);
@@ -791,7 +821,7 @@
                 break;
 
               case STATES.NULL_U:
-                if (char === "l") {
+                if (char === GRAMMAR.l) {
                   stackReplace(STATES.NULL_L);
                 } else {
                   invalidateFile(char, i);
@@ -800,7 +830,7 @@
                 break;
 
               case STATES.NULL_L:
-                if (char === "l") {
+                if (char === GRAMMAR.l) {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -816,17 +846,17 @@
                 break;
 
               case STATES.ARRAY:
-                if (char === "]") {
+                if (char === GRAMMAR.CLOSE_BRACKET) {
                   padCounter--;
                   contextStack.pop();
                   currentContext = contextStack[contextStack.length - 1];
                   setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
                 } else if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
                 } else {
@@ -839,20 +869,20 @@
                 break;
 
               case STATES.ARRAY_MORE:
-                if (char === "]") {
+                if (char === GRAMMAR.CLOSE_BRACKET) {
                   padCounter--;
                   contextStack.pop();
                   currentContext = contextStack[contextStack.length - 1];
                   setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
                   stackPop();
                 } else if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
-                } else if (char === ",") {
+                } else if (char === GRAMMAR.COMMA) {
                   stackPop();
                   stackPush(STATES.ARRAY_MORE);
                   stackPush(STATES.WHITESPACE_VALUE);
@@ -863,19 +893,19 @@
                 break;
 
               case STATES.OBJECT_KEY:
-                if (char === "}") {
+                if (char === GRAMMAR.CLOSE_BRACE) {
                   padCounter--;
                   contextStack.pop();
                   currentContext = contextStack[contextStack.length - 1];
                   stackPop();
                 } else if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
-                } else if (char === '"') {
+                } else if (char === GRAMMAR.DOUBLE_QUOTES) {
                   subStart = i + 1;
                   stackPop();
                   stackPush(STATES.OBJECT_MORE);
@@ -889,13 +919,13 @@
                 break;
 
               case STATES.OBJECT_COLON:
-                if (char === ":") {
+                if (char === GRAMMAR.COLON) {
                   stackPop();
                 } else if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
                 } else {
@@ -905,19 +935,19 @@
                 break;
 
               case STATES.OBJECT_MORE:
-                if (char === "}") {
+                if (char === GRAMMAR.CLOSE_BRACE) {
                   padCounter--;
                   contextStack.pop();
                   currentContext = contextStack[contextStack.length - 1];
                   stackPop();
                 } else if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
-                } else if (char === ",") {
+                } else if (char === GRAMMAR.COMMA) {
                   stackPop();
                   stackPush(STATES.OBJECT_KEY);
                 } else {
@@ -928,10 +958,10 @@
 
               case STATES.WHITESPACE_VALUE:
                 if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
                 } else {
@@ -944,10 +974,10 @@
               default:
                 // unkown state
                 if (
-                  char === " " ||
-                  char === "\t" ||
-                  char === "\r" ||
-                  char === "\n"
+                  char === GRAMMAR.EMPTY_SPACE ||
+                  char === GRAMMAR.TAB ||
+                  char === GRAMMAR.CARRIAGE_RETURN ||
+                  char === GRAMMAR.NEW_LINE
                 ) {
                   // ignore whitespace
                 } else {
@@ -957,20 +987,13 @@
 
             i++;
           }
-          parsedChars += i;
-          // console.log(parsedChars/file.size);
 
-          if (parsedChars === file.size || result.done) {
-            // console.log(pads, keys, values);
-            done = true;
+          if (result.done) {
             performance.measure("fileRead", "fileRead");
+            if (stateStack.length) {
+              invalidateFile(char, i);
+            }
           }
-
-          if (done && stateStack.length) {
-            invalidateFile(char, i);
-          }
-
-          performance.measure("lexer_parser", "lexer_parser");
 
           lineCounter = pads.length;
           oldCounter = lineCounter;
@@ -1002,7 +1025,7 @@
         let deadline = performance.now() + 50;
 
         async function doWork() {
-          if (!done) {
+          if (!result.done) {
             await seek();
             if (
               navigator?.scheduling?.isInputPending() ||
