@@ -127,8 +127,7 @@
         width: 0px;
       }
 
-      .key.string,
-      .string_key {
+      .key.object {
         width: auto;
         color: #4e9590;
         padding-right: 4px;
@@ -141,8 +140,7 @@
         white-space: nowrap;
       }
 
-      .key.number,
-      .number_key {
+      .key.number {
         width: auto;
         color: #bfbfbf;
         padding-right: 4px;
@@ -156,13 +154,16 @@
       .value.object {
         color: #d557da;
       }
+
       .value.string {
         color: #e86767;
       }
+
       .value.boolean,
       .value.number {
         color: #3d64ff;
       }
+
       .value.symbol {
         color: #f2cab8;
         font-weight: 700;
@@ -275,12 +276,12 @@
 
       let pointersLen;
       let token;
-      let extraPad;
 
       let oldCounter;
 
       let padCounter;
       let key = 0;
+      let keyMap;
 
       // html
 
@@ -354,6 +355,7 @@
         currentContext = null;
         state = STATES.VALUE;
         padCounter = 0;
+        keyMap = new Map();
 
         function stackReplace(newState) {
           stateStack.pop();
@@ -375,33 +377,7 @@
           }
         }
 
-        function isInsideArray() {
-          let i = stateStack.length - 1;
-          while (i > 0) {
-            let st = stateStack[i];
-            if (st === STATES.ARRAY || st === STATES.ARRAY_MORE) {
-              return true;
-            }
-            i--;
-          }
-          return false;
-        }
-
-        function isInsideObject() {
-          let i = stateStack.length - 1;
-          while (i > 0) {
-            let st = stateStack[i];
-            if (st === STATES.OBJECT || st === STATES.OBJECT_MORE) {
-              return true;
-            }
-            i--;
-          }
-          return false;
-        }
-
         pointersLen = 0;
-        extraPad = 0;
-
         oldCounter = 0;
 
         // html
@@ -525,10 +501,17 @@
               case STATES.STRING:
                 switch (char) {
                   case '"':
+                    let str = input.substring(subStart, i);
+
                     if (
                       stateStack[stateStack.length - 2] === STATES.OBJECT_COLON
                     ) {
-                      currentContext.key = input.substring(subStart, i);
+                      key = keyMap.get(str);
+                      if (!key) {
+                        key = new String(str);
+                        keyMap.set(str, key);
+                      }
+                      currentContext.key = key;
                       setLine(padCounter, currentContext.key, undefined);
                     } else {
                       if (currentContext?.type === "ARRAY") {
@@ -537,16 +520,13 @@
                       }
 
                       ind = pads.length - 1;
-                      values[ind] = input.substring(subStart, i);
+                      values[ind] = str;
                     }
                     stackPop();
                     // STRING FOUND
                     break;
                   case "\\":
                     stackReplace(STATES.STRING_ESCAPING);
-                    break;
-                  default:
-                    //do nothing
                     break;
                 }
                 break;
@@ -659,9 +639,7 @@
                   stackReplace(STATES.NUMBER_FRACTION);
                 } else if (char === "e" || char === "E") {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char >= "0" && char <= "9") {
-                  // do nothing;
-                } else {
+                } else if (char < "0" || char > "9") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -679,9 +657,7 @@
               case STATES.NUMBER_FRACTION:
                 if (char === "e" || char === "E") {
                   stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char >= "0" && char <= "9") {
-                  // do nothing;
-                } else {
+                } else if (char < "0" || char > "9") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -706,7 +682,6 @@
                   (char >= "0" && char <= "9")
                 ) {
                   stackReplace(STATES.NUMBER_EXPONENTIAL);
-                  // do nothing;
                 } else {
                   invalidateFile(char, i);
                   break scanner;
@@ -714,9 +689,7 @@
                 break;
 
               case STATES.NUMBER_EXPONENTIAL:
-                if (char >= "0" && char <= "9") {
-                  // do nothing;
-                } else {
+                if (char < "0" || char > "9") {
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
@@ -1072,7 +1045,7 @@
           top = Math.floor((y - buffer) / rh),
           bottom = Math.ceil((y + vp + buffer) / rh);
 
-        start = Math.max(0, top);
+        let start = Math.max(0, top);
         bottom = Math.min(th / rh, bottom);
 
         let diff = bottom - start;
