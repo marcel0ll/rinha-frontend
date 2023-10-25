@@ -2,13 +2,16 @@
 <html lang="en">
   <head>
     <title>JSON Viewer - Rinha de Frontend</title>
+    <link rel="icon" href="/images/icon-192x192.png" />
     <meta charset="UTF-8" />
+    <meta http-equiv="Content-Language" content="en" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta
       name="description"
-      content="A JSON viewer built as part of a competition: 'rinha de frontend'."
+      content="A JSON viewer built as part of the competition 'rinha de frontend'"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script defer src="./sw.js"></script>
     <style>
       @font-face {
         font-family: Inter;
@@ -188,6 +191,9 @@
   </head>
 
   <body>
+    <noscript
+      >Please enable JavaScript to continue using this application.</noscript
+    >
     <section id="menu">
       <h1>JSON Tree Viewer</h1>
       <h2>
@@ -1181,6 +1187,22 @@
         );
         virtualScrollOffset = Math.round(virtualScrollPage * cj);
         prevScrollTop = scrollTop;
+      }
+
+      // sw.js
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").then(
+            (registration) => {
+              console.log(
+                `Service Worker registered! Scope: ${registration.scope}`,
+              );
+            },
+            (error) => {
+              console.error(`Service Worker registration failed: ${error}`);
+            },
+          );
+        });
       }
     </script>
   </body>
