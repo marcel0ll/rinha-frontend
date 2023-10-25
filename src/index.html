@@ -1,1209 +1,1253 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <title>JSON Viewer - Rinha de Frontend</title>
-    <link rel="icon" href="/images/icon-192x192.png" />
-    <meta charset="UTF-8" />
-    <meta http-equiv="Content-Language" content="en" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#ffffff" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <meta
-      name="description"
-      content="A JSON viewer built as part of the competition 'rinha de frontend'"
-    />
-    <style>
-      @font-face {
-        font-family: Inter;
-        src: url(./inter_variable.ttf);
-        font-display: swap;
+
+<head>
+  <link rel="preload" href="/inter_regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="/inter_bold.ttf" as="font" type="font/ttf" crossorigin>
+  <title>JSON Viewer - Rinha de Frontend</title>
+  <link rel="icon" href="/images/icon-192x192.png" />
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Language" content="en" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+
+  <meta name="description" content="A JSON viewer built as part of the competition 'rinha de frontend'" />
+  <style>
+    @font-face {
+      font-family: Inter;
+      src: url(./inter_regular.ttf);
+      font-display: optional;
+      font-weight: 400;
+    }
+
+    @font-face {
+      font-family: Inter;
+      src: url(./inter_bold.ttf);
+      font-display: optional;
+      font-weight: 700;
+    }
+
+    @font-face {
+      font-family: "Inter-fallback";
+      src: local("Arial");
+      size-adjust: 107.4014%;
+      ascent-override: 90.199%;
+      descent-override: 22.4836%;
+      line-gap-override: 0%;
+    }
+
+    button {
+      background: linear-gradient(to bottom, #e4e4e4, #f7f7f7);
+      border-radius: 5px;
+      border: 1px solid #000000;
+    }
+
+    #fileSelect {
+      padding: 6px 12px 6px 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-family: "Inter", "Inter-fallback";
+      height: 100dvh;
+      margin: 0;
+      padding-bottom: 1px;
+    }
+
+    body {
+      margin: 0;
+      height: 100dvh;
+      display: grid;
+      justify-content: center;
+      align-items: center;
+    }
+
+    h1 {
+      font-weight: 700;
+      line-height: 1.2;
+      font-size: 48px;
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 400;
+    }
+
+    #menu {
+      text-align: center;
+    }
+
+    #alert {
+      display: none;
+      color: #bf0e0e;
+    }
+
+    #canvas {
+      position: relative;
+      pointer-events: none;
+    }
+
+    #title {
+      display: flex;
+      justify-content: space-between;
+      height: 74px;
+      padding-top: 24px;
+      padding-bottom: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: white;
+      font-size: 32px;
+      align-items: center;
+      transition:
+        height 1s,
+        font-size 1s,
+        padding 1s;
+    }
+
+    #title.animate {
+      padding: 0;
+      height: 36px;
+      font-size: 20px;
+    }
+
+    #fileName {
+      font-size: inherit;
+      margin: 0;
+    }
+
+    #viewer {
+      height: 100%;
+      max-height: 100dvh;
+      /* height: 400px!important; */
+      width: 100dvw;
+      max-width: 1200px;
+      padding: 0 20px;
+      justify-content: start;
+      overflow-y: scroll;
+    }
+
+    .line {
+      display: flex;
+      align-items: center;
+
+      position: absolute;
+    }
+
+    .column {
+      flex-shrink: 0;
+      width: 24px;
+      height: 100%;
+      border-left: 1px solid #bfbfbf;
+      display: inline-block;
+      position: relative;
+      left: 1px;
+    }
+
+    .line {
+      height: 28px;
+      max-height: 28px;
+    }
+
+    .key {
+      width: 0px;
+    }
+
+    .key.object {
+      width: auto;
+      color: #437f7b;
+      padding-right: 4px;
+      font-weight: 400;
+    }
+
+    .value {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .key.number {
+      width: auto;
+      color: #585757;
+      padding-right: 4px;
+      font-weight: 400;
+    }
+
+    #back {
+      aspect-ratio: 1;
+    }
+
+    .value.object {
+      color: #d557da;
+    }
+
+    .value.string {
+      color: #de2828;
+    }
+
+    .value.boolean,
+    .value.number {
+      color: #2044d3;
+    }
+
+    .value.symbol {
+      color: #966954;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <noscript>Please enable JavaScript to continue using this application.</noscript>
+  <section id="menu">
+    <h1>JSON Tree Viewer</h1>
+    <h2>
+      Simple JSON Viewer that runs completely on-client. No data exchange
+    </h2>
+    <input type="file" id="fileInput" accept="application/JSON" style="display: none" />
+    <button id="fileSelect" type="button">Load JSON</button>
+    <p id="alert">Invalid file. Please load a valid JSON file.</p>
+  </section>
+  <section id="viewer" style="display: none">
+    <div id="title" class="">
+      <h1 id="filename"></h1>
+      <button id="back">✖</button>
+    </div>
+    <div id="canvas"></div>
+  </section>
+  <script>
+    const CHUNK_SIZE = 0x100000;
+    // const CHUNK_SIZE = 0x100;
+    const TOKEN_TYPES = {
+      LEFT_BRACKET: Symbol(),
+      RIGHT_BRACKET: Symbol(),
+    };
+
+    const GRAMMAR = {
+      DOUBLE_QUOTES: '"',
+      _0: "0",
+      _1: "1",
+      _2: "2",
+      _3: "3",
+      _4: "4",
+      _5: "5",
+      _6: "6",
+      _7: "7",
+      _8: "8",
+      _9: "9",
+      MINUS: "-",
+      PLUS: "+",
+      OPEN_BRACKET: "[",
+      CLOSE_BRACKET: "]",
+      OPEN_BRACE: "{",
+      CLOSE_BRACE: "}",
+      BACKSLASH: "\\",
+      a: "a",
+      e: "e",
+      f: "f",
+      l: "l",
+      n: "n",
+      s: "s",
+      t: "t",
+      r: "r",
+      u: "u",
+      A: "A",
+      F: "F",
+      E: "E",
+      DOT: ".",
+      EMPTY_SPACE: " ",
+      TAB: "\t",
+      CARRIAGE_RETURN: "\r",
+      NEW_LINE: "\n",
+      COLON: ":",
+      COMMA: ",",
+    };
+
+    const STATES = {
+      VALUE: Symbol("VALUE"),
+      WHITESPACE_VALUE: Symbol("WHITESPACE_VALUE"),
+      STRING: Symbol("STRING"),
+      STRING_ESCAPING: Symbol("STRING_ESCAPING"),
+      STRING_UNICODE_1: Symbol("STRING_UNICODE_1"),
+      STRING_UNICODE_2: Symbol("STRING_UNICODE_2"),
+      STRING_UNICODE_3: Symbol("STRING_UNICODE_3"),
+      STRING_UNICODE_4: Symbol("STRING_UNICODE_4"),
+      NUMBER_ZERO: Symbol("NUMBER_ZERO"),
+      NUMBER_INTEGER: Symbol("NUMBER_INTEGER"),
+      NUMBER_FRACTION: Symbol("NUMBER_FRACTION"),
+      NUMBER_EXPONENTIAL_INIT: Symbol("NUMBER_EXPONENTIAL"),
+      NUMBER_EXPONENTIAL: Symbol("NUMBER_EXPONENTIAL"),
+      TRUE_T: Symbol("TRUE_T"),
+      TRUE_R: Symbol("TRUE_R"),
+      TRUE_U: Symbol("TRUE_U"),
+      FALSE_F: Symbol("FALSE_F"),
+      FALSE_A: Symbol("FALSE_A"),
+      FALSE_L: Symbol("FALSE_L"),
+      FALSE_S: Symbol("FALSE_S"),
+      NULL_N: Symbol("NULL_N"),
+      NULL_U: Symbol("NULL_U"),
+      NULL_L: Symbol("NULL_L"),
+      ARRAY: Symbol("ARRAY"),
+      ARRAY_MORE: Symbol("ARRAY_MORE"),
+      OBJECT_KEY: Symbol("OBJECT_KEY"),
+      OBJECT_COLON: Symbol("OBJECT_COLON"),
+      OBJECT_MORE: Symbol("OBJECT_MORE"),
+    };
+
+    // elements
+    const back = document.getElementById("back");
+    const menu = document.getElementById("menu");
+
+    const title = document.getElementById("title");
+    const fileName = document.getElementById("filename");
+    const fileSelect = document.getElementById("fileSelect");
+    const fileInput = document.getElementById("fileInput");
+    const alert = document.getElementById("alert");
+
+    const viewer = document.getElementById("viewer");
+    const canvas = document.getElementById("canvas");
+
+    // index
+    let i = 0;
+
+    let lineCounter;
+    let virtualDom = null;
+    let pads = [];
+    let keys = [];
+    let values = [];
+    let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
+
+    let file;
+
+    let buffer = new ArrayBuffer(CHUNK_SIZE);
+    let reader;
+
+    // read + decode
+    let decoder = new TextDecoder("utf-8");
+    let readPages;
+    let input;
+
+    let consumedValueIndex;
+    let state;
+    let char;
+
+    let pointers;
+    let pointer;
+
+    let pointersLen;
+    let token;
+
+    let oldCounter;
+
+    let padCounter;
+    let key = 0;
+    let keyMap;
+    let result;
+
+    // html
+
+    const baseLineElement = document.createElement("div");
+    baseLineElement.classList.add("line");
+    baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
+
+    const baseCol = document.createElement("span");
+    baseCol.classList.add("column");
+
+    // Large virtual scroller
+    var th = 0; // total theorical height (len(rows) * rowHeight)
+    var h = canvas.clientHeight; // virtual scroller scroll height
+    var ph = h / 100; // virtual page height
+    var n = Math.ceil(th / ph); // number of virtual pages
+    var vp = viewer.clientHeight; // actual DOM viewer height
+    var cj = (th - h) / (n - 1); // "jumpiness" coefficient
+
+    var rh = 28; // row height
+
+    fileSelect.onclick = (e) => {
+      fileInput.value = null;
+      fileInput.click();
+    };
+
+    function setLine(pad, key, value) {
+      pads.push(pad);
+      keys.push(key);
+      values.push(value);
+    }
+
+    back.onclick = () => {
+      menu.style.display = "block";
+      viewer.style.display = "none";
+      canvas.innerHTML = "";
+    };
+
+    function invalidateFile(char, i, message) {
+      menu.style.display = "block";
+      viewer.style.display = "none";
+      alert.style.display = "block";
+      canvas.innerHTML = "";
+      if (message) {
+        console.error(message, char, i);
+      }
+    }
+
+    fileInput.onchange = async (e) => {
+      // ensure alert is hidden
+      alert.style.display = "none";
+
+      performance.mark("fileRead");
+
+      file = fileInput.files[0];
+      reader = file.stream().getReader({mode: "byob"});
+      fileName.innerText = file.name;
+
+      // read
+      readPages = 0;
+
+      // parser
+      pads = [];
+      keys = [];
+      values = [];
+
+      stateStack = [STATES.VALUE];
+      contextStack = [];
+      currentContext = null;
+      state = STATES.VALUE;
+      padCounter = 0;
+      keyMap = new Map();
+
+      function stackReplace(newState) {
+        stateStack.pop();
+        stateStack.push(newState);
+        state = newState;
       }
 
-      @font-face {
-        font-family: "Inter-fallback";
-        size-adjust: 10100%;
-        ascent-override: 10100%;
-        src: local("Arial");
+      function stackPush(newState) {
+        stateStack.push(newState);
+        state = newState;
       }
 
-      button {
-        background: linear-gradient(to bottom, #e4e4e4, #f7f7f7);
-        border-radius: 5px;
-        border: 1px solid #000000;
+      function stackPop() {
+        stateStack.pop();
+        state = stateStack[stateStack.length - 1];
       }
 
-      #fileSelect {
-        padding: 6px 12px 6px 12px;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        font-family: "Inter", "Inter-fallback";
-        height: 100dvh;
-        margin: 0;
-        padding-bottom: 1px;
-      }
-
-      body {
-        margin: 0;
-        height: 100dvh;
-        display: grid;
-        justify-content: center;
-        align-items: center;
-      }
-
-      h1 {
-        font-weight: 700;
-        line-height: 1.2;
-        font-size: 48px;
-      }
-
-      h2 {
-        font-size: 24px;
-        font-weight: 400;
-      }
-
-      #menu {
-        text-align: center;
-      }
-
-      #alert {
-        display: none;
-        color: #bf0e0e;
-      }
-
-      #canvas {
-        position: relative;
-        pointer-events: none;
-      }
-
-      #title {
-        display: flex;
-        justify-content: space-between;
-        height: 74px;
-        padding-top: 24px;
-        padding-bottom: 10px;
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        background: white;
-        font-size: 32px;
-        align-items: center;
-        transition:
-          height 1s,
-          font-size 1s,
-          padding 1s;
-      }
-
-      #title.animate {
-        padding: 0;
-        height: 36px;
-        font-size: 20px;
-      }
-
-      #fileName {
-        font-size: inherit;
-        margin: 0;
-      }
-
-      #viewer {
-        height: 100%;
-        max-height: 100dvh;
-        /* height: 400px!important; */
-        width: 100dvw;
-        max-width: 1200px;
-        padding: 0 20px;
-        justify-content: start;
-        overflow-y: scroll;
-      }
-
-      .line {
-        display: flex;
-        align-items: center;
-
-        position: absolute;
-      }
-
-      .column {
-        flex-shrink: 0;
-        width: 24px;
-        height: 100%;
-        border-left: 1px solid #bfbfbf;
-        display: inline-block;
-        position: relative;
-        left: 1px;
-      }
-
-      .line {
-        height: 28px;
-        max-height: 28px;
-      }
-
-      .key {
-        width: 0px;
-      }
-
-      .key.object {
-        width: auto;
-        color: #437f7b;
-        padding-right: 4px;
-        font-weight: 400;
-      }
-
-      .value {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-
-      .key.number {
-        width: auto;
-        color: #585757;
-        padding-right: 4px;
-        font-weight: 400;
-      }
-
-      #back {
-        aspect-ratio: 1;
-      }
-
-      .value.object {
-        color: #d557da;
-      }
-
-      .value.string {
-        color: #de2828;
-      }
-
-      .value.boolean,
-      .value.number {
-        color: #2044d3;
-      }
-
-      .value.symbol {
-        color: #966954;
-        font-weight: 700;
-      }
-    </style>
-  </head>
-
-  <body>
-    <noscript
-      >Please enable JavaScript to continue using this application.</noscript
-    >
-    <section id="menu">
-      <h1>JSON Tree Viewer</h1>
-      <h2>
-        Simple JSON Viewer that runs completely on-client. No data exchange
-      </h2>
-      <input
-        type="file"
-        id="fileInput"
-        accept="application/JSON"
-        style="display: none"
-      />
-      <button id="fileSelect" type="button">Load JSON</button>
-      <p id="alert">Invalid file. Please load a valid JSON file.</p>
-    </section>
-    <section id="viewer" style="display: none">
-      <div id="title" class="">
-        <h1 id="filename"></h1>
-        <button id="back">✖</button>
-      </div>
-      <div id="canvas"></div>
-    </section>
-    <script>
-      const CHUNK_SIZE = 0x100000;
-      // const CHUNK_SIZE = 0x100;
-      const TOKEN_TYPES = {
-        LEFT_BRACKET: Symbol(),
-        RIGHT_BRACKET: Symbol(),
-      };
-
-      const GRAMMAR = {
-        DOUBLE_QUOTES: '"',
-        _0: "0",
-        _1: "1",
-        _2: "2",
-        _3: "3",
-        _4: "4",
-        _5: "5",
-        _6: "6",
-        _7: "7",
-        _8: "8",
-        _9: "9",
-        MINUS: "-",
-        PLUS: "+",
-        OPEN_BRACKET: "[",
-        CLOSE_BRACKET: "]",
-        OPEN_BRACE: "{",
-        CLOSE_BRACE: "}",
-        BACKSLASH: "\\",
-        a: "a",
-        e: "e",
-        f: "f",
-        l: "l",
-        n: "n",
-        s: "s",
-        t: "t",
-        r: "r",
-        u: "u",
-        A: "A",
-        F: "F",
-        E: "E",
-        DOT: ".",
-        EMPTY_SPACE: " ",
-        TAB: "\t",
-        CARRIAGE_RETURN: "\r",
-        NEW_LINE: "\n",
-        COLON: ":",
-        COMMA: ",",
-      };
-
-      const STATES = {
-        VALUE: Symbol("VALUE"),
-        WHITESPACE_VALUE: Symbol("WHITESPACE_VALUE"),
-        STRING: Symbol("STRING"),
-        STRING_ESCAPING: Symbol("STRING_ESCAPING"),
-        STRING_UNICODE_1: Symbol("STRING_UNICODE_1"),
-        STRING_UNICODE_2: Symbol("STRING_UNICODE_2"),
-        STRING_UNICODE_3: Symbol("STRING_UNICODE_3"),
-        STRING_UNICODE_4: Symbol("STRING_UNICODE_4"),
-        NUMBER_ZERO: Symbol("NUMBER_ZERO"),
-        NUMBER_INTEGER: Symbol("NUMBER_INTEGER"),
-        NUMBER_FRACTION: Symbol("NUMBER_FRACTION"),
-        NUMBER_EXPONENTIAL_INIT: Symbol("NUMBER_EXPONENTIAL"),
-        NUMBER_EXPONENTIAL: Symbol("NUMBER_EXPONENTIAL"),
-        TRUE_T: Symbol("TRUE_T"),
-        TRUE_R: Symbol("TRUE_R"),
-        TRUE_U: Symbol("TRUE_U"),
-        FALSE_F: Symbol("FALSE_F"),
-        FALSE_A: Symbol("FALSE_A"),
-        FALSE_L: Symbol("FALSE_L"),
-        FALSE_S: Symbol("FALSE_S"),
-        NULL_N: Symbol("NULL_N"),
-        NULL_U: Symbol("NULL_U"),
-        NULL_L: Symbol("NULL_L"),
-        ARRAY: Symbol("ARRAY"),
-        ARRAY_MORE: Symbol("ARRAY_MORE"),
-        OBJECT_KEY: Symbol("OBJECT_KEY"),
-        OBJECT_COLON: Symbol("OBJECT_COLON"),
-        OBJECT_MORE: Symbol("OBJECT_MORE"),
-      };
-
-      // elements
-      const back = document.getElementById("back");
-      const menu = document.getElementById("menu");
-
-      const title = document.getElementById("title");
-      const fileName = document.getElementById("filename");
-      const fileSelect = document.getElementById("fileSelect");
-      const fileInput = document.getElementById("fileInput");
-      const alert = document.getElementById("alert");
-
-      const viewer = document.getElementById("viewer");
-      const canvas = document.getElementById("canvas");
-
-      // index
-      let i = 0;
-
-      let lineCounter;
-      let virtualDom = null;
-      let pads = [];
-      let keys = [];
-      let values = [];
-      let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
-
-      let file;
-
-      let buffer = new ArrayBuffer(CHUNK_SIZE);
-      let reader;
-
-      // read + decode
-      let decoder = new TextDecoder("utf-8");
-      let readPages;
-      let input;
-
-      let consumedValueIndex;
-      let state;
-      let char;
-
-      let pointers;
-      let pointer;
-
-      let pointersLen;
-      let token;
-
-      let oldCounter;
-
-      let padCounter;
-      let key = 0;
-      let keyMap;
-      let result;
+      pointersLen = 0;
+      oldCounter = 0;
 
       // html
+      lineCounter = 0;
+      virtualDom = document.createDocumentFragment();
 
-      const baseLineElement = document.createElement("div");
-      baseLineElement.classList.add("line");
-      baseLineElement.innerHTML = `<span class="key"></span><span class="value"></span>`;
+      viewer.style.display = "block";
+      menu.style.display = "none";
 
-      const baseCol = document.createElement("span");
-      baseCol.classList.add("column");
+      async function seek() {
+        result = await reader.read(new Uint8Array(buffer));
 
-      // Large virtual scroller
-      var th = 0; // total theorical height (len(rows) * rowHeight)
-      var h = canvas.clientHeight; // virtual scroller scroll height
-      var ph = h / 100; // virtual page height
-      var n = Math.ceil(th / ph); // number of virtual pages
-      var vp = viewer.clientHeight; // actual DOM viewer height
-      var cj = (th - h) / (n - 1); // "jumpiness" coefficient
+        buffer = result.value.buffer;
+        input = decoder.decode(result.value);
 
-      var rh = 28; // row height
+        // lexer+parser
+        i = 0;
+        let subStart;
+        consumedValueIndex = 0;
+        let inputLen = input.length;
 
-      fileSelect.onclick = (e) => {
-        fileInput.value = null;
-        fileInput.click();
-      };
+        scanner: while (i < inputLen) {
+          char = input[i];
 
-      function setLine(pad, key, value) {
-        pads.push(pad);
-        keys.push(key);
-        values.push(value);
-      }
+          // console.log(stateStack);
+          // console.log(char, state);
 
-      back.onclick = () => {
-        menu.style.display = "block";
-        viewer.style.display = "none";
-        canvas.innerHTML = "";
-      };
+          switch (state) {
+            case STATES.VALUE:
+              switch (char) {
+                case GRAMMAR.DOUBLE_QUOTES:
+                  stackReplace(STATES.STRING);
+                  subStart = i + 1;
+                  break;
 
-      function invalidateFile(char, i, message) {
-        menu.style.display = "block";
-        viewer.style.display = "none";
-        alert.style.display = "block";
-        canvas.innerHTML = "";
-        if (message) {
-          console.error(message, char, i);
-        }
-      }
+                // NUMBERS
+                case GRAMMAR._0:
+                  stackReplace(STATES.NUMBER_ZERO);
+                  subStart = i;
+                  break;
+                case GRAMMAR.MINUS:
+                case GRAMMAR._1:
+                case GRAMMAR._2:
+                case GRAMMAR._3:
+                case GRAMMAR._4:
+                case GRAMMAR._5:
+                case GRAMMAR._6:
+                case GRAMMAR._7:
+                case GRAMMAR._8:
+                case GRAMMAR._9:
+                  stackReplace(STATES.NUMBER_INTEGER);
+                  subStart = i;
+                  break;
 
-      fileInput.onchange = async (e) => {
-        // ensure alert is hidden
-        alert.style.display = "none";
+                // true
+                case GRAMMAR.t:
+                  stackReplace(STATES.TRUE_T);
+                  break;
 
-        performance.mark("fileRead");
+                // false
+                case GRAMMAR.f:
+                  stackReplace(STATES.FALSE_F);
+                  break;
 
-        file = fileInput.files[0];
-        reader = file.stream().getReader({ mode: "byob" });
-        fileName.innerText = file.name;
+                // null
+                case GRAMMAR.n:
+                  stackReplace(STATES.NULL_N);
+                  break;
 
-        // read
-        readPages = 0;
+                // array
+                case GRAMMAR.OPEN_BRACKET:
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(
+                      padCounter,
+                      currentContext.key,
+                      TOKEN_TYPES.LEFT_BRACKET,
+                    );
+                  } else if (currentContext === null) {
+                    setLine(padCounter, undefined, TOKEN_TYPES.LEFT_BRACKET);
+                  } else {
+                    values[pads.length - 1] = TOKEN_TYPES.LEFT_BRACKET;
+                  }
 
-        // parser
-        pads = [];
-        keys = [];
-        values = [];
+                  padCounter++;
+                  contextStack.push({type: "ARRAY", key: 0});
+                  currentContext = contextStack[contextStack.length - 1];
 
-        stateStack = [STATES.VALUE];
-        contextStack = [];
-        currentContext = null;
-        state = STATES.VALUE;
-        padCounter = 0;
-        keyMap = new Map();
+                  stackReplace(STATES.ARRAY);
+                  break;
 
-        function stackReplace(newState) {
-          stateStack.pop();
-          stateStack.push(newState);
-          state = newState;
-        }
+                // object
+                case GRAMMAR.OPEN_BRACE:
+                  if (currentContext?.type === "ARRAY") {
+                    setLine(padCounter, currentContext.key, undefined);
+                    currentContext.key++;
+                  } else if (currentContext === null) {
+                    padCounter--;
+                  }
 
-        function stackPush(newState) {
-          stateStack.push(newState);
-          state = newState;
-        }
+                  contextStack.push({type: "OBJECT", key: null});
+                  padCounter++;
+                  currentContext = contextStack[contextStack.length - 1];
 
-        function stackPop() {
-          stateStack.pop();
-          state = stateStack[stateStack.length - 1];
-        }
+                  stackReplace(STATES.OBJECT_KEY);
+                  break;
 
-        pointersLen = 0;
-        oldCounter = 0;
+                default:
+                  invalidateFile(char, i);
+                  break scanner;
+              }
+              break;
 
-        // html
-        lineCounter = 0;
-        virtualDom = document.createDocumentFragment();
+            case STATES.STRING:
+              switch (char) {
+                case GRAMMAR.DOUBLE_QUOTES:
+                  let str = input.substring(subStart, i);
 
-        viewer.style.display = "block";
-        menu.style.display = "none";
-
-        async function seek() {
-          result = await reader.read(new Uint8Array(buffer));
-
-          buffer = result.value.buffer;
-          input = decoder.decode(result.value);
-
-          // lexer+parser
-          i = 0;
-          let subStart;
-          consumedValueIndex = 0;
-          let inputLen = input.length;
-
-          scanner: while (i < inputLen) {
-            char = input[i];
-
-            // console.log(stateStack);
-            // console.log(char, state);
-
-            switch (state) {
-              case STATES.VALUE:
-                switch (char) {
-                  case GRAMMAR.DOUBLE_QUOTES:
-                    stackReplace(STATES.STRING);
-                    subStart = i + 1;
-                    break;
-
-                  // NUMBERS
-                  case GRAMMAR._0:
-                    stackReplace(STATES.NUMBER_ZERO);
-                    subStart = i;
-                    break;
-                  case GRAMMAR.MINUS:
-                  case GRAMMAR._1:
-                  case GRAMMAR._2:
-                  case GRAMMAR._3:
-                  case GRAMMAR._4:
-                  case GRAMMAR._5:
-                  case GRAMMAR._6:
-                  case GRAMMAR._7:
-                  case GRAMMAR._8:
-                  case GRAMMAR._9:
-                    stackReplace(STATES.NUMBER_INTEGER);
-                    subStart = i;
-                    break;
-
-                  // true
-                  case GRAMMAR.t:
-                    stackReplace(STATES.TRUE_T);
-                    break;
-
-                  // false
-                  case GRAMMAR.f:
-                    stackReplace(STATES.FALSE_F);
-                    break;
-
-                  // null
-                  case GRAMMAR.n:
-                    stackReplace(STATES.NULL_N);
-                    break;
-
-                  // array
-                  case GRAMMAR.OPEN_BRACKET:
-                    if (currentContext?.type === "ARRAY") {
-                      setLine(
-                        padCounter,
-                        currentContext.key,
-                        TOKEN_TYPES.LEFT_BRACKET,
-                      );
-                    } else if (currentContext === null) {
-                      setLine(padCounter, undefined, TOKEN_TYPES.LEFT_BRACKET);
-                    } else {
-                      values[pads.length - 1] = TOKEN_TYPES.LEFT_BRACKET;
+                  if (
+                    stateStack[stateStack.length - 2] === STATES.OBJECT_COLON
+                  ) {
+                    key = keyMap.get(str);
+                    if (!key) {
+                      key = new String(str);
+                      keyMap.set(str, key);
                     }
-
-                    padCounter++;
-                    contextStack.push({ type: "ARRAY", key: 0 });
-                    currentContext = contextStack[contextStack.length - 1];
-
-                    stackReplace(STATES.ARRAY);
-                    break;
-
-                  // object
-                  case GRAMMAR.OPEN_BRACE:
+                    setLine(padCounter, key, undefined);
+                  } else {
                     if (currentContext?.type === "ARRAY") {
                       setLine(padCounter, currentContext.key, undefined);
                       currentContext.key++;
-                    } else if (currentContext === null) {
-                      padCounter--;
                     }
 
-                    contextStack.push({ type: "OBJECT", key: null });
-                    padCounter++;
-                    currentContext = contextStack[contextStack.length - 1];
+                    ind = pads.length - 1;
+                    values[ind] = str;
+                  }
+                  stackPop();
+                  // STRING FOUND
+                  break;
+                case GRAMMAR.BACKSLASH:
+                  stackReplace(STATES.STRING_ESCAPING);
+                  break;
+              }
+              break;
 
-                    stackReplace(STATES.OBJECT_KEY);
-                    break;
-
-                  default:
-                    invalidateFile(char, i);
-                    break scanner;
-                }
-                break;
-
-              case STATES.STRING:
-                switch (char) {
-                  case GRAMMAR.DOUBLE_QUOTES:
-                    let str = input.substring(subStart, i);
-
-                    if (
-                      stateStack[stateStack.length - 2] === STATES.OBJECT_COLON
-                    ) {
-                      key = keyMap.get(str);
-                      if (!key) {
-                        key = new String(str);
-                        keyMap.set(str, key);
-                      }
-                      setLine(padCounter, key, undefined);
-                    } else {
-                      if (currentContext?.type === "ARRAY") {
-                        setLine(padCounter, currentContext.key, undefined);
-                        currentContext.key++;
-                      }
-
-                      ind = pads.length - 1;
-                      values[ind] = str;
-                    }
-                    stackPop();
-                    // STRING FOUND
-                    break;
-                  case GRAMMAR.BACKSLASH:
-                    stackReplace(STATES.STRING_ESCAPING);
-                    break;
-                }
-                break;
-
-              case STATES.STRING_ESCAPING:
-                switch (char) {
-                  // JSON SPEC
-                  // case '"':
-                  // case '\\':
-                  // case '/':
-                  // case 'b':
-                  // case 'f':
-                  // case 'n':
-                  // case 'r':
-                  // case 't':
-                  //   stackReplace(STATES.STRING);
-                  //   break;
-                  case GRAMMAR.u:
-                    stackReplace(STATES.STRING_UNICODE_1);
-                    break;
-                  default:
-                    //JSON SPEC
-                    // invalidateFile(char, i, "Escaping");
-                    // break scanner;
-                    // NON SPEC
-                    stackReplace(STATES.STRING);
-
-                    break;
-                }
-                break;
-
-              case STATES.STRING_UNICODE_1:
-                // is char hex?
-                if (
-                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
-                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
-                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
-                ) {
-                  stackReplace(STATES.STRING_UNICODE_2);
-                } else {
-                  invalidateFile(c, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.STRING_UNICODE_2:
-                // is char hex?
-                if (
-                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
-                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
-                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
-                ) {
-                  stackReplace(STATES.STRING_UNICODE_3);
-                } else {
-                  invalidateFile(c, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.STRING_UNICODE_3:
-                // is char hex?
-                if (
-                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
-                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
-                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
-                ) {
-                  stackReplace(STATES.STRING_UNICODE_4);
-                } else {
-                  invalidateFile(c, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.STRING_UNICODE_4:
-                // is char hex?
-                if (
-                  (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
-                  (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
-                  (char >= GRAMMAR.A && char <= GRAMMAR.F)
-                ) {
+            case STATES.STRING_ESCAPING:
+              switch (char) {
+                // JSON SPEC
+                // case '"':
+                // case '\\':
+                // case '/':
+                // case 'b':
+                // case 'f':
+                // case 'n':
+                // case 'r':
+                // case 't':
+                //   stackReplace(STATES.STRING);
+                //   break;
+                case GRAMMAR.u:
+                  stackReplace(STATES.STRING_UNICODE_1);
+                  break;
+                default:
+                  //JSON SPEC
+                  // invalidateFile(char, i, "Escaping");
+                  // break scanner;
+                  // NON SPEC
                   stackReplace(STATES.STRING);
-                } else {
-                  invalidateFile(c, i);
-                  break scanner;
+
+                  break;
+              }
+              break;
+
+            case STATES.STRING_UNICODE_1:
+              // is char hex?
+              if (
+                (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                (char >= GRAMMAR.A && char <= GRAMMAR.F)
+              ) {
+                stackReplace(STATES.STRING_UNICODE_2);
+              } else {
+                invalidateFile(c, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.STRING_UNICODE_2:
+              // is char hex?
+              if (
+                (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                (char >= GRAMMAR.A && char <= GRAMMAR.F)
+              ) {
+                stackReplace(STATES.STRING_UNICODE_3);
+              } else {
+                invalidateFile(c, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.STRING_UNICODE_3:
+              // is char hex?
+              if (
+                (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                (char >= GRAMMAR.A && char <= GRAMMAR.F)
+              ) {
+                stackReplace(STATES.STRING_UNICODE_4);
+              } else {
+                invalidateFile(c, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.STRING_UNICODE_4:
+              // is char hex?
+              if (
+                (char >= GRAMMAR._0 && char <= GRAMMAR._9) ||
+                (char >= GRAMMAR.a && char <= GRAMMAR.f) ||
+                (char >= GRAMMAR.A && char <= GRAMMAR.F)
+              ) {
+                stackReplace(STATES.STRING);
+              } else {
+                invalidateFile(c, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.NUMBER_ZERO:
+              if (char === GRAMMAR.DOT) {
+                stackReplace(STATES.NUMBER_FRACTION);
+              } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
+                stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
+              } else {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.NUMBER_ZERO:
-                if (char === GRAMMAR.DOT) {
-                  stackReplace(STATES.NUMBER_FRACTION);
-                } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+                ind = pads.length - 1;
+                values[ind] = +input.substring(subStart, i);
+                // Number Found
+                stackPop();
+                // backtrack
+                continue;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
-                  // Number Found
-                  stackPop();
-                  // backtrack
-                  continue;
+            case STATES.NUMBER_INTEGER:
+              if (char === GRAMMAR.DOT) {
+                stackReplace(STATES.NUMBER_FRACTION);
+              } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
+                stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
+              } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.NUMBER_INTEGER:
-                if (char === GRAMMAR.DOT) {
-                  stackReplace(STATES.NUMBER_FRACTION);
-                } else if (char === GRAMMAR.e || char === GRAMMAR.E) {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+                ind = pads.length - 1;
+                values[ind] = +input.substring(subStart, i);
+                // Number Found
+                stackPop();
+                // backtrack
+                continue;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
-                  // Number Found
-                  stackPop();
-                  // backtrack
-                  continue;
+            case STATES.NUMBER_FRACTION:
+              if (char === GRAMMAR.e || char === GRAMMAR.E) {
+                stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
+              } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.NUMBER_FRACTION:
-                if (char === GRAMMAR.e || char === GRAMMAR.E) {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL_INIT);
-                } else if (char < GRAMMAR._0 || char > GRAMMAR._9) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+                ind = pads.length - 1;
+                values[ind] = +input.substring(subStart, i);
+                // Number Found
+                stackPop();
+                // backtrack
+                continue;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
-                  // Number Found
-                  stackPop();
-                  // backtrack
-                  continue;
+            case STATES.NUMBER_EXPONENTIAL_INIT:
+              if (
+                char === GRAMMAR.MINUS ||
+                char === GRAMMAR.PLUS ||
+                (char >= GRAMMAR._0 && char <= GRAMMAR._9)
+              ) {
+                stackReplace(STATES.NUMBER_EXPONENTIAL);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.NUMBER_EXPONENTIAL:
+              if (char < GRAMMAR._0 || char > GRAMMAR._9) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.NUMBER_EXPONENTIAL_INIT:
-                if (
-                  char === GRAMMAR.MINUS ||
-                  char === GRAMMAR.PLUS ||
-                  (char >= GRAMMAR._0 && char <= GRAMMAR._9)
-                ) {
-                  stackReplace(STATES.NUMBER_EXPONENTIAL);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
+                ind = pads.length - 1;
+                values[ind] = +input.substring(subStart, i);
+                // Number Found
+                stackPop();
+                // backtrack
+                continue;
+              }
+              break;
+
+            case STATES.TRUE_T:
+              if (char === GRAMMAR.r) {
+                stackReplace(STATES.TRUE_R);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.TRUE_R:
+              if (char === GRAMMAR.u) {
+                stackReplace(STATES.TRUE_U);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.TRUE_U:
+              if (char === GRAMMAR.e) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.NUMBER_EXPONENTIAL:
-                if (char < GRAMMAR._0 || char > GRAMMAR._9) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+                ind = pads.length - 1;
+                values[ind] = true;
+                stackPop();
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
-                  // Number Found
-                  stackPop();
-                  // backtrack
-                  continue;
+            case STATES.FALSE_F:
+              if (char === GRAMMAR.a) {
+                stackReplace(STATES.FALSE_A);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.FALSE_A:
+              if (char === GRAMMAR.l) {
+                stackReplace(STATES.FALSE_L);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.FALSE_L:
+              if (char === GRAMMAR.s) {
+                stackReplace(STATES.FALSE_S);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.FALSE_S:
+              if (char === GRAMMAR.e) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.TRUE_T:
-                if (char === GRAMMAR.r) {
-                  stackReplace(STATES.TRUE_R);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
+                ind = pads.length - 1;
+                values[ind] = false;
+                stackPop();
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.NULL_N:
+              if (char === GRAMMAR.u) {
+                stackReplace(STATES.NULL_U);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.NULL_U:
+              if (char === GRAMMAR.l) {
+                stackReplace(STATES.NULL_L);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
+
+            case STATES.NULL_L:
+              if (char === GRAMMAR.l) {
+                if (currentContext?.type === "ARRAY") {
+                  setLine(padCounter, currentContext.key, undefined);
+                  currentContext.key++;
                 }
-                break;
 
-              case STATES.TRUE_R:
-                if (char === GRAMMAR.u) {
-                  stackReplace(STATES.TRUE_U);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
+                ind = pads.length - 1;
+                values[ind] = null;
+                stackPop();
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-              case STATES.TRUE_U:
-                if (char === GRAMMAR.e) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+            case STATES.ARRAY:
+              if (char === GRAMMAR.CLOSE_BRACKET) {
+                padCounter--;
+                contextStack.pop();
+                currentContext = contextStack[contextStack.length - 1];
+                setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
+                stackPop();
+              } else if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else {
+                stackPop();
+                stackPush(STATES.ARRAY_MORE);
+                stackPush(STATES.VALUE);
+                // backtrack
+                continue;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = true;
-                  stackPop();
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
+            case STATES.ARRAY_MORE:
+              if (char === GRAMMAR.CLOSE_BRACKET) {
+                padCounter--;
+                contextStack.pop();
+                currentContext = contextStack[contextStack.length - 1];
+                setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
+                stackPop();
+              } else if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else if (char === GRAMMAR.COMMA) {
+                stackPop();
+                stackPush(STATES.ARRAY_MORE);
+                stackPush(STATES.WHITESPACE_VALUE);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-              case STATES.FALSE_F:
-                if (char === GRAMMAR.a) {
-                  stackReplace(STATES.FALSE_A);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
+            case STATES.OBJECT_KEY:
+              if (char === GRAMMAR.CLOSE_BRACE) {
+                padCounter--;
+                contextStack.pop();
+                currentContext = contextStack[contextStack.length - 1];
+                stackPop();
+              } else if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else if (char === GRAMMAR.DOUBLE_QUOTES) {
+                subStart = i + 1;
+                stackPop();
+                stackPush(STATES.OBJECT_MORE);
+                stackPush(STATES.WHITESPACE_VALUE);
+                stackPush(STATES.OBJECT_COLON);
+                stackPush(STATES.STRING);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-              case STATES.FALSE_A:
-                if (char === GRAMMAR.l) {
-                  stackReplace(STATES.FALSE_L);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
+            case STATES.OBJECT_COLON:
+              if (char === GRAMMAR.COLON) {
+                stackPop();
+              } else if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-              case STATES.FALSE_L:
-                if (char === GRAMMAR.s) {
-                  stackReplace(STATES.FALSE_S);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
+            case STATES.OBJECT_MORE:
+              if (char === GRAMMAR.CLOSE_BRACE) {
+                padCounter--;
+                contextStack.pop();
+                currentContext = contextStack[contextStack.length - 1];
+                stackPop();
+              } else if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else if (char === GRAMMAR.COMMA) {
+                stackPop();
+                stackPush(STATES.OBJECT_KEY);
+              } else {
+                invalidateFile(char, i);
+                break scanner;
+              }
+              break;
 
-              case STATES.FALSE_S:
-                if (char === GRAMMAR.e) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
+            case STATES.WHITESPACE_VALUE:
+              if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else {
+                stackReplace(STATES.VALUE);
+                // backtrack
+                continue;
+              }
+              break;
 
-                  ind = pads.length - 1;
-                  values[ind] = false;
-                  stackPop();
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.NULL_N:
-                if (char === GRAMMAR.u) {
-                  stackReplace(STATES.NULL_U);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.NULL_U:
-                if (char === GRAMMAR.l) {
-                  stackReplace(STATES.NULL_L);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.NULL_L:
-                if (char === GRAMMAR.l) {
-                  if (currentContext?.type === "ARRAY") {
-                    setLine(padCounter, currentContext.key, undefined);
-                    currentContext.key++;
-                  }
-
-                  ind = pads.length - 1;
-                  values[ind] = null;
-                  stackPop();
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.ARRAY:
-                if (char === GRAMMAR.CLOSE_BRACKET) {
-                  padCounter--;
-                  contextStack.pop();
-                  currentContext = contextStack[contextStack.length - 1];
-                  setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
-                  stackPop();
-                } else if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else {
-                  stackPop();
-                  stackPush(STATES.ARRAY_MORE);
-                  stackPush(STATES.VALUE);
-                  // backtrack
-                  continue;
-                }
-                break;
-
-              case STATES.ARRAY_MORE:
-                if (char === GRAMMAR.CLOSE_BRACKET) {
-                  padCounter--;
-                  contextStack.pop();
-                  currentContext = contextStack[contextStack.length - 1];
-                  setLine(padCounter, undefined, TOKEN_TYPES.RIGHT_BRACKET);
-                  stackPop();
-                } else if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else if (char === GRAMMAR.COMMA) {
-                  stackPop();
-                  stackPush(STATES.ARRAY_MORE);
-                  stackPush(STATES.WHITESPACE_VALUE);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.OBJECT_KEY:
-                if (char === GRAMMAR.CLOSE_BRACE) {
-                  padCounter--;
-                  contextStack.pop();
-                  currentContext = contextStack[contextStack.length - 1];
-                  stackPop();
-                } else if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else if (char === GRAMMAR.DOUBLE_QUOTES) {
-                  subStart = i + 1;
-                  stackPop();
-                  stackPush(STATES.OBJECT_MORE);
-                  stackPush(STATES.WHITESPACE_VALUE);
-                  stackPush(STATES.OBJECT_COLON);
-                  stackPush(STATES.STRING);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.OBJECT_COLON:
-                if (char === GRAMMAR.COLON) {
-                  stackPop();
-                } else if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.OBJECT_MORE:
-                if (char === GRAMMAR.CLOSE_BRACE) {
-                  padCounter--;
-                  contextStack.pop();
-                  currentContext = contextStack[contextStack.length - 1];
-                  stackPop();
-                } else if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else if (char === GRAMMAR.COMMA) {
-                  stackPop();
-                  stackPush(STATES.OBJECT_KEY);
-                } else {
-                  invalidateFile(char, i);
-                  break scanner;
-                }
-                break;
-
-              case STATES.WHITESPACE_VALUE:
-                if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else {
-                  stackReplace(STATES.VALUE);
-                  // backtrack
-                  continue;
-                }
-                break;
-
-              default:
-                // unkown state
-                if (
-                  char === GRAMMAR.EMPTY_SPACE ||
-                  char === GRAMMAR.TAB ||
-                  char === GRAMMAR.CARRIAGE_RETURN ||
-                  char === GRAMMAR.NEW_LINE
-                ) {
-                  // ignore whitespace
-                } else {
-                  invalidateFile();
-                }
-            }
-
-            i++;
+            default:
+              // unkown state
+              if (
+                char === GRAMMAR.EMPTY_SPACE ||
+                char === GRAMMAR.TAB ||
+                char === GRAMMAR.CARRIAGE_RETURN ||
+                char === GRAMMAR.NEW_LINE
+              ) {
+                // ignore whitespace
+              } else {
+                invalidateFile();
+              }
           }
 
-          if (result.done) {
-            performance.measure("fileRead", "fileRead");
-            if (stateStack.length) {
-              invalidateFile(char, i);
-            }
-          }
-
-          lineCounter = pads.length;
-          oldCounter = lineCounter;
-
-          // set height for virtual scroller
-          th = lineCounter * rh + 74; // virtual height
-
-          if (th < 1e7) {
-            // just one page
-            h = ph = th;
-            n = 1;
-            cj = 0;
-          } else {
-            // break into pages
-            h = 1e7;
-            ph = h / 100;
-            n = Math.ceil(th / ph);
-            cj = (th - h) / (n - 1);
-          }
-
-          vp = viewer.clientHeight;
-          canvas.style.height = `${h}px`;
-        }
-        // console.log(pads, keys, values);
-
-        await seek();
-        renderFreshCanvas();
-
-        let deadline = performance.now() + 50;
-
-        async function doWork() {
-          if (!result.done) {
-            await seek();
-            if (
-              navigator?.scheduling?.isInputPending() ||
-              performance.now() >= deadline
-            ) {
-              await yieldToMain();
-              deadline = performance.now() + 50;
-            }
-            doWork();
-          }
-        }
-
-        await doWork();
-      };
-
-      // A function for shimming scheduler.yield and setTimeout:
-      function yieldToMain() {
-        // Use scheduler.yield if it exists:
-        if ("scheduler" in window && "yield" in scheduler) {
-          return scheduler.yield();
+          i++;
         }
 
-        // Fall back to setTimeout:
-        return new Promise((resolve) => {
-          setTimeout(resolve, 0);
-        });
+        if (result.done) {
+          performance.measure("fileRead", "fileRead");
+          if (stateStack.length) {
+            invalidateFile(char, i);
+          }
+        }
+
+        lineCounter = pads.length;
+        oldCounter = lineCounter;
+
+        // set height for virtual scroller
+        th = lineCounter * rh + 74; // virtual height
+
+        if (th < 1e7) {
+          // just one page
+          h = ph = th;
+          n = 1;
+          cj = 0;
+        } else {
+          // break into pages
+          h = 1e7;
+          ph = h / 100;
+          n = Math.ceil(th / ph);
+          cj = (th - h) / (n - 1);
+        }
+
+        vp = viewer.clientHeight;
+        canvas.style.height = `${h}px`;
+      }
+      // console.log(pads, keys, values);
+
+      await seek();
+      renderFreshCanvas();
+
+      let deadline = performance.now() + 50;
+
+      async function doWork() {
+        if (!result.done) {
+          await seek();
+          if (
+            navigator?.scheduling?.isInputPending() ||
+            performance.now() >= deadline
+          ) {
+            await yieldToMain();
+            deadline = performance.now() + 50;
+          }
+          doWork();
+        }
       }
 
-      window.addEventListener("resize", (event) => {
-        linesShown = Math.floor(document.body.clientHeight / 28) + 10;
+      await doWork();
+    };
 
-        vp = viewer.clientHeight; // viewer height
+    // A function for shimming scheduler.yield and setTimeout:
+    function yieldToMain() {
+      // Use scheduler.yield if it exists:
+      if ("scheduler" in window && "yield" in scheduler) {
+        return scheduler.yield();
+      }
 
-        renderFreshCanvas();
+      // Fall back to setTimeout:
+      return new Promise((resolve) => {
+        setTimeout(resolve, 0);
       });
+    }
 
-      function renderFreshCanvas() {
-        var y = viewer.scrollTop + virtualScrollOffset,
-          buffer = vp,
-          top = Math.floor((y - buffer) / rh),
-          bottom = Math.ceil((y + vp + buffer) / rh);
+    window.addEventListener("resize", (event) => {
+      linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
-        let start = Math.max(0, top);
-        bottom = Math.min(th / rh, bottom);
+      vp = viewer.clientHeight; // viewer height
 
-        let diff = bottom - start;
+      renderFreshCanvas();
+    });
 
-        canvas.innerHTML = "";
-        virtualDom = document.createDocumentFragment();
-        for (i = 0; i <= diff; ++i) {
-          let ind = pads.length - 1;
-          if (i + start > ind) continue;
+    function renderFreshCanvas() {
+      var y = viewer.scrollTop + virtualScrollOffset,
+        buffer = vp,
+        top = Math.floor((y - buffer) / rh),
+        bottom = Math.ceil((y + vp + buffer) / rh);
 
-          const pad = pads[i + start];
-          const key = keys[i + start];
-          const value = values[i + start];
+      let start = Math.max(0, top);
+      bottom = Math.min(th / rh, bottom);
 
-          const el = baseLineElement.cloneNode(true);
+      let diff = bottom - start;
 
-          // Padding
-          for (var j = 0; j < pad; j++) {
-            const col = baseCol.cloneNode();
-            el.prepend(col);
-          }
+      canvas.innerHTML = "";
+      virtualDom = document.createDocumentFragment();
+      for (i = 0; i <= diff; ++i) {
+        let ind = pads.length - 1;
+        if (i + start > ind) continue;
 
-          // key
-          if (typeof key !== "undefined") {
-            let keyEl = el.querySelector(".key");
-            keyEl.classList.add(typeof key);
-            keyEl.innerText = `${key}:`;
-          }
+        const pad = pads[i + start];
+        const key = keys[i + start];
+        const value = values[i + start];
 
-          // value
-          let valueType = typeof value;
-          if (valueType !== "undefined") {
-            let valueEl = el.querySelector(".value");
-            valueEl.classList.add(valueType);
-            if (value === TOKEN_TYPES.LEFT_BRACKET) {
-              valueEl.innerText = "[";
-            } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
-              valueEl.innerText = "]";
-            } else if (valueType === "string") {
-              valueEl.innerText = `"${String(value)}"`;
-            } else {
-              valueEl.innerText = String(value);
-            }
-          }
+        const el = baseLineElement.cloneNode(true);
 
-          el.style.top = `${(start + i) * rh - virtualScrollOffset}px`;
-          virtualDom.appendChild(el);
-        }
-        canvas.appendChild(virtualDom);
-      }
-
-      // Large virtual scroller
-      var virtualScrollPage = 0; // current page
-      var virtualScrollOffset = 0; // current page offset
-      var prevScrollTop = 0;
-
-      var content = canvas;
-
-      // viewport.css("height", vp);
-      // content.css("height", h);
-
-      viewer.addEventListener("scroll", onScroll);
-
-      function onScroll() {
-        var scrollTop = viewer.scrollTop;
-
-        // if (scrollTop > 0) {
-        //   title.classList.add("animate");
-        // } else {
-        //   title.classList.remove("animate");
-        // }
-
-        if (Math.abs(scrollTop - prevScrollTop) > vp) {
-          onJump();
-        } else {
-          onNearScroll();
+        // Padding
+        for (var j = 0; j < pad; j++) {
+          const col = baseCol.cloneNode();
+          el.prepend(col);
         }
 
-        renderFreshCanvas();
-      }
-
-      function onNearScroll() {
-        var scrollTop = viewer.scrollTop;
-
-        // next virtualScrollPage
-        if (scrollTop + virtualScrollOffset > (virtualScrollPage + 1) * ph) {
-          virtualScrollPage++;
-          virtualScrollOffset = Math.round(virtualScrollPage * cj);
-          viewer.scrollTop = `${(prevScrollTop = scrollTop - cj)}px`;
-        } else if (scrollTop + virtualScrollOffset < virtualScrollPage * ph) {
-          // prev virtualScrollPage
-          virtualScrollPage--;
-          virtualScrollOffset = Math.round(virtualScrollPage * cj);
-          viewer.scrollTop = `${(prevScrollTop = scrollTop + cj)}px`;
-        } else {
-          prevScrollTop = scrollTop;
+        // key
+        if (typeof key !== "undefined") {
+          let keyEl = el.querySelector(".key");
+          keyEl.classList.add(typeof key);
+          keyEl.innerText = `${key}:`;
         }
+
+        // value
+        let valueType = typeof value;
+        if (valueType !== "undefined") {
+          let valueEl = el.querySelector(".value");
+          valueEl.classList.add(valueType);
+          if (value === TOKEN_TYPES.LEFT_BRACKET) {
+            valueEl.innerText = "[";
+          } else if (value === TOKEN_TYPES.RIGHT_BRACKET) {
+            valueEl.innerText = "]";
+          } else if (valueType === "string") {
+            valueEl.innerText = `"${String(value)}"`;
+          } else {
+            valueEl.innerText = String(value);
+          }
+        }
+
+        el.style.top = `${(start + i) * rh - virtualScrollOffset}px`;
+        virtualDom.appendChild(el);
+      }
+      canvas.appendChild(virtualDom);
+    }
+
+    // Large virtual scroller
+    var virtualScrollPage = 0; // current page
+    var virtualScrollOffset = 0; // current page offset
+    var prevScrollTop = 0;
+
+    var content = canvas;
+
+    // viewport.css("height", vp);
+    // content.css("height", h);
+
+    viewer.addEventListener("scroll", onScroll);
+
+    function onScroll() {
+      var scrollTop = viewer.scrollTop;
+
+      // if (scrollTop > 0) {
+      //   title.classList.add("animate");
+      // } else {
+      //   title.classList.remove("animate");
+      // }
+
+      if (Math.abs(scrollTop - prevScrollTop) > vp) {
+        onJump();
+      } else {
+        onNearScroll();
       }
 
-      function onJump() {
-        var scrollTop = viewer.scrollTop;
-        virtualScrollPage = Math.floor(
-          scrollTop * ((th - vp) / (h - vp)) * (1 / ph),
-        );
+      renderFreshCanvas();
+    }
+
+    function onNearScroll() {
+      var scrollTop = viewer.scrollTop;
+
+      // next virtualScrollPage
+      if (scrollTop + virtualScrollOffset > (virtualScrollPage + 1) * ph) {
+        virtualScrollPage++;
         virtualScrollOffset = Math.round(virtualScrollPage * cj);
+        viewer.scrollTop = `${(prevScrollTop = scrollTop - cj)}px`;
+      } else if (scrollTop + virtualScrollOffset < virtualScrollPage * ph) {
+        // prev virtualScrollPage
+        virtualScrollPage--;
+        virtualScrollOffset = Math.round(virtualScrollPage * cj);
+        viewer.scrollTop = `${(prevScrollTop = scrollTop + cj)}px`;
+      } else {
         prevScrollTop = scrollTop;
       }
+    }
 
-      // sw.js
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").then(
-            (registration) => {
-              console.log(
-                `Service Worker registered! Scope: ${registration.scope}`,
-              );
-            },
-            (error) => {
-              console.error(`Service Worker registration failed: ${error}`);
-            },
-          );
-        });
-      }
-    </script>
-  </body>
+    function onJump() {
+      var scrollTop = viewer.scrollTop;
+      virtualScrollPage = Math.floor(
+        scrollTop * ((th - vp) / (h - vp)) * (1 / ph),
+      );
+      virtualScrollOffset = Math.round(virtualScrollPage * cj);
+      prevScrollTop = scrollTop;
+    }
+
+    // sw.js
+    function invokeServiceWorkerUpdateFlow(registration) {
+      // TODO implement your own UI notification element
+      notification.show("New version of the app is available. Refresh now?");
+      notification.addEventListener('click', () => {
+        if (registration.waiting) {
+          // let waiting Service Worker know it should became active
+          registration.waiting.postMessage('SKIP_WAITING')
+        }
+      })
+    }
+
+    // check if the browser supports serviceWorker at all
+    if ('serviceWorker' in navigator) {
+      // wait for the page to load
+      window.addEventListener('load', async () => {
+        // register the service worker from the file specified
+        const registration = await navigator.serviceWorker.register('/sw.js')
+
+        // ensure the case when the updatefound event was missed is also handled
+        // by re-invoking the prompt when there's a waiting Service Worker
+        if (registration.waiting) {
+          invokeServiceWorkerUpdateFlow(registration)
+        }
+
+        // detect Service Worker update available and wait for it to become installed
+        registration.addEventListener('updatefound', () => {
+          if (registration.installing) {
+            // wait until the new Service worker is actually installed (ready to take over)
+            registration.installing.addEventListener('statechange', () => {
+              if (registration.waiting) {
+                // if there's an existing controller (previous Service Worker), show the prompt
+                if (navigator.serviceWorker.controller) {
+                  invokeServiceWorkerUpdateFlow(registration)
+                } else {
+                  // otherwise it's the first install, nothing to do
+                  console.log('Service Worker initialized for the first time')
+                }
+              }
+            })
+          }
+        })
+
+        let refreshing = false;
+
+        // detect controller change and refresh the page
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            window.location.reload()
+            refreshing = true
+          }
+        })
+      })
+    }
+  </script>
+</body>
+
 </html>
