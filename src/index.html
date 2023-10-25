@@ -1,9 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <title>JSON Viewer - Rinha de Frontend</title>
-    <meta name="description" content="A JSON viewer built as part of a competition: 'rinha de frontend'.">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8" />
+    <meta
+      name="description"
+      content="A JSON viewer built as part of a competition: 'rinha de frontend'."
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script defer src="./sw.js"></script>
     <style>
       @font-face {
@@ -14,11 +18,10 @@
 
       @font-face {
         font-family: "Inter-fallback";
-        size-adjust: 10100.00%;
-        ascent-override: 10100.00%;
+        size-adjust: 10100%;
+        ascent-override: 10100%;
         src: local("Arial");
       }
-
 
       button {
         background: linear-gradient(to bottom, #e4e4e4, #f7f7f7);
@@ -1160,12 +1163,12 @@
         if (scrollTop + virtualScrollOffset > (virtualScrollPage + 1) * ph) {
           virtualScrollPage++;
           virtualScrollOffset = Math.round(virtualScrollPage * cj);
-          viewer.scrollTop = `${prevScrollTop = scrollTop - cj}px`;
+          viewer.scrollTop = `${(prevScrollTop = scrollTop - cj)}px`;
         } else if (scrollTop + virtualScrollOffset < virtualScrollPage * ph) {
           // prev virtualScrollPage
           virtualScrollPage--;
           virtualScrollOffset = Math.round(virtualScrollPage * cj);
-          viewer.scrollTop = `${prevScrollTop = scrollTop + cj}px`;
+          viewer.scrollTop = `${(prevScrollTop = scrollTop + cj)}px`;
         } else {
           prevScrollTop = scrollTop;
         }
