@@ -248,11 +248,11 @@
           <h1 id="filename"></h1>
           <button id="back">✖</button>
         </nav>
-        <code id="canvas"></code>
+        <code id="canvas" tabindex="0"></code>
       </section>
     </main>
     <script>
-      const CHUNK_SIZE = 0x100000;
+      const CHUNK_SIZE = 0x2000;
       // const CHUNK_SIZE = 0x100;
       const TOKEN_TYPES = {
         LEFT_BRACKET: Symbol(),
@@ -545,6 +545,7 @@
                         currentContext.key,
                         TOKEN_TYPES.LEFT_BRACKET,
                       );
+                      currentContext.key+=1;
                     } else if (currentContext === null) {
                       setLine(padCounter, undefined, TOKEN_TYPES.LEFT_BRACKET);
                     } else {
@@ -1070,7 +1071,7 @@
         await seek();
         renderFreshCanvas();
 
-        let deadline = performance.now() + 50;
+        let deadline = performance.now() + 45;
 
         async function doWork() {
           if (!result.done) {
@@ -1080,7 +1081,7 @@
               performance.now() >= deadline
             ) {
               await yieldToMain();
-              deadline = performance.now() + 50;
+              deadline = performance.now() + 45;
             }
             doWork();
           }
@@ -1227,14 +1228,11 @@
 
       // sw.js
       function invokeServiceWorkerUpdateFlow(registration) {
-        // TODO implement your own UI notification element
-        notification.show("New version of the app is available. Refresh now?");
-        notification.addEventListener("click", () => {
-          if (registration.waiting) {
-            // let waiting Service Worker know it should became active
-            registration.waiting.postMessage("SKIP_WAITING");
-          }
-        });
+        let didConfirm = confirm("New version of the app is available. Refresh now?");
+        if(didConfirm) {
+          // let waiting Service Worker know it should became active
+          registration.waiting.postMessage({type: "SKIP_WAITING"});
+        } 
       }
 
       // check if the browser supports serviceWorker at all
