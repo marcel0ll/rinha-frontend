@@ -253,8 +253,8 @@
       </section>
     </main>
     <script>
-      const CHUNK_SIZE = 0x2000;
-      // const CHUNK_SIZE = 0x100;
+      const CHUNK_SIZE = 0x20000;
+
       const TOKEN_TYPES = {
         LEFT_BRACKET: Symbol(),
         RIGHT_BRACKET: Symbol(),
@@ -1074,12 +1074,10 @@
           lineCounter = pads.length;
           oldCounter = lineCounter;
 
-          // set height for virtual scroller
           th = lineCounter * rh + 74; // virtual height
-
           if (th < 1e7) {
             // just one page
-            h = ph = th;
+            h = ph = Math.max(th, vp);
             n = 1;
             cj = 0;
           } else {
@@ -1090,15 +1088,15 @@
             cj = (th - h) / (n - 1);
           }
 
-          vp = viewer.clientHeight;
+          // set height for virtual scroller
+          vp = viewer.clientHeight; // viewer height
           canvas.style.height = `${h}px`;
         }
         // console.log(pads, keys, values);
 
         await seek();
         renderFreshCanvas();
-
-        let deadline = performance.now() + 49;
+        let deadline = performance.now() + 48;
 
         async function doWork() {
           if (!result.done) {
@@ -1108,7 +1106,7 @@
               performance.now() >= deadline
             ) {
               await yieldToMain();
-              deadline = performance.now() + 49;
+              deadline = performance.now() + 48;
             }
             doWork();
           }
@@ -1135,14 +1133,16 @@
 
         vp = viewer.clientHeight; // viewer height
 
-        renderFreshCanvas();
+        if (fileInput.value) {
+          renderFreshCanvas();
+        }
       });
 
       function renderFreshCanvas() {
         var y = viewer.scrollTop + virtualScrollOffset,
           buffer = vp,
-          top = Math.floor((y - buffer) / rh),
-          bottom = Math.ceil((y + vp + buffer) / rh);
+          top = Math.floor((y - 6 * rh) / rh),
+          bottom = Math.ceil((y + vp) / rh);
 
         let start = Math.max(0, top);
         bottom = Math.min(th / rh, bottom);
