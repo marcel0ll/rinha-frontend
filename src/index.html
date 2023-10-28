@@ -430,6 +430,7 @@
       fileInput.onchange = async (e) => {
         // ensure alert is hidden
         alert.style.display = "none";
+        viewer.scrollTop = 0;
 
         performance.mark("fileRead");
 
