@@ -108,6 +108,7 @@
         font-family: inherit;
         display: block;
         overflow-x: scroll;
+        height: calc(100svh - 74px);
       }
 
       #title {
@@ -348,9 +349,9 @@
 
       let lineCounter;
       let virtualDom = null;
-      let pads = [];
-      let keys = [];
-      let values = [];
+      let pads;
+      let keys;
+      let values;
       let linesShown = Math.floor(document.body.clientHeight / 28) + 10;
 
       let file;
@@ -390,12 +391,12 @@
       baseCol.classList.add("column");
 
       // Large virtual scroller
-      var th = 0; // total theorical height (len(rows) * rowHeight)
       var h = canvas.clientHeight; // virtual scroller scroll height
-      var ph = h / 100; // virtual page height
-      var n = Math.ceil(th / ph); // number of virtual pages
+      var th = h; // total theorical height (len(rows) * rowHeight)
+      var ph = th; // virtual page height
+      var n = 1; // number of virtual pages
       var vp = viewer.clientHeight; // actual DOM viewer height
-      var cj = (th - h) / (n - 1); // "jumpiness" coefficient
+      var cj; // "jumpiness" coefficient
 
       var rh = 28; // row height
 
@@ -599,6 +600,8 @@
                       if (currentContext?.type === "ARRAY") {
                         setLine(padCounter, currentContext.key, undefined);
                         currentContext.key++;
+                      } else if (currentContext === null) {
+                        setLine(0, undefined, undefined);
                       }
 
                       ind = pads.length - 1;
@@ -705,10 +708,13 @@
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
+                  } else if (currentContext === null) {
+                    setLine(0, undefined, undefined);
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
+                  num = +input.substring(subStart, i);
+                  values[ind] = num;
                   // Number Found
                   stackPop();
                   // backtrack
@@ -725,10 +731,13 @@
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
+                  } else if (currentContext === null) {
+                    setLine(0, undefined, undefined);
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
+                  num = +input.substring(subStart, i);
+                  values[ind] = num;
                   // Number Found
                   stackPop();
                   // backtrack
@@ -743,10 +752,13 @@
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
+                  } else if (currentContext === null) {
+                    setLine(0, undefined, undefined);
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
+                  num = +input.substring(subStart, i);
+                  values[ind] = num;
                   // Number Found
                   stackPop();
                   // backtrack
@@ -772,10 +784,13 @@
                   if (currentContext?.type === "ARRAY") {
                     setLine(padCounter, currentContext.key, undefined);
                     currentContext.key++;
+                  } else if (currentContext === null) {
+                    setLine(0, undefined, undefined);
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = +input.substring(subStart, i);
+                  num = +input.substring(subStart, i);
+                  values[ind] = num;
                   // Number Found
                   stackPop();
                   // backtrack
@@ -809,7 +824,11 @@
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = true;
+                  if (ind >= 0) {
+                    values[ind] = true;
+                  } else {
+                    setLine(0, undefined, true);
+                  }
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -852,7 +871,11 @@
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = false;
+                  if (ind >= 0) {
+                    values[ind] = false;
+                  } else {
+                    setLine(0, undefined, false);
+                  }
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -886,7 +909,11 @@
                   }
 
                   ind = pads.length - 1;
-                  values[ind] = null;
+                  if (ind >= 0) {
+                    values[ind] = null;
+                  } else {
+                    setLine(0, undefined, null);
+                  }
                   stackPop();
                 } else {
                   invalidateFile(char, i);
@@ -1071,7 +1098,7 @@
         await seek();
         renderFreshCanvas();
 
-        let deadline = performance.now() + 45;
+        let deadline = performance.now() + 49;
 
         async function doWork() {
           if (!result.done) {
@@ -1081,7 +1108,7 @@
               performance.now() >= deadline
             ) {
               await yieldToMain();
-              deadline = performance.now() + 45;
+              deadline = performance.now() + 49;
             }
             doWork();
           }
